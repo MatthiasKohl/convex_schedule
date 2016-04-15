@@ -1,6 +1,7 @@
 #! /usr/bin/python3
 # -*- encoding: utf-8 -*-
 
+import operator
 from collections import namedtuple
 from functools import reduce
 from subprocess import Popen, PIPE

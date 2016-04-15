@@ -69,7 +69,6 @@ def plot_metric_scatter(shape_candidates, resources, boundaries, dimensions, sta
         for n, projections in shape_candidates.items()
     }
 
-    # TODO try to add density to this plot (color for how many shapes there are for a given point on scatter)
     for alpha in args[2:]:
         shapes_metric_scatter_alpha = {}
         for r in resources:
@@ -89,24 +88,33 @@ def plot_metric_scatter(shape_candidates, resources, boundaries, dimensions, sta
 
 def plot_metric_scatter_density(shape_candidates, resources, boundaries, dimensions, start_time, isGrid, args):
     shapes_metrics = {
-        n: np.array(args[0](p) for p in projections)
+        n: [args[0](p) for p in projections]
         for n, projections in shape_candidates.items()
     }
+    for alpha in args[3:]:
+        shapes_metric_scatter_alpha = []
+        for r in resources:
+            cutOffSize = int(r + r*alpha)
+            shapes_metric_scatter_alpha.extend([[r,m] for n, metrics in shapes_metrics.items() if n >= r and n <= cutOffSize for m in metrics])
+        densityPerResource = {}
+        for n,m in shapes_metric_scatter_alpha:
+            densityPerResource[n] = densityPerResource.get(n, 0) + 1
 
-    # TODO add alphas
-    metric_values = np.array([[n, args[0](p)] for n, projections in shape_candidates.items() for p in projections])
+        density = [densityPerResource[n] for n,m in shapes_metric_scatter_alpha]
 
-    bins = [args[2], metric_values.shape[0]]
-    #bins = [10, 10]
-    hist, locx, locy = np.histogram2d(metric_values[:, 1], metric_values[:, 0], bins=bins)
-    X, Y = np.meshgrid(locy, locx)
-    hist = np.ma.masked_array(hist, hist < 1)
-    plt.pcolormesh(X, Y, hist, vmin=1)
-    plt.xlabel('Number of resources')
-    plt.ylabel('Metric of shape')
-    top = ' grid' if isGrid else ' torus'
-    plt.title('Scatter plot of metric ' + args[1] + ' for convex shapes in a ' +  'x'.join(map(str, boundaries)) + top + ' for a given number of resources')
-    plt.show()
+        metric_values = np.array(shapes_metric_scatter_alpha)
+        #bins = [args[2], len(resources)]
+        #hist, locx, locy = np.histogram2d(metric_values[:, 1], metric_values[:, 0], bins=bins)
+        #X, Y = np.meshgrid(locy, locx)
+        #hist = np.ma.masked_array(hist, hist < 1)
+        #plt.pcolormesh(X, Y, hist, vmin=1
+        plt.scatter(metric_values[:, 0], metric_values[:, 1], c=density, s=10)
+        plt.colorbar()
+        plt.xlabel('Number of resources')
+        plt.ylabel('Metric of shape')
+        top = ' grid' if isGrid else ' torus'
+        plt.title('Scatter plot of metric ' + args[1] + ' for convex shapes in a ' +  'x'.join(map(str, boundaries)) + top + ' for a given number of resources (with alpha=' + str(alpha) + ')')
+        plt.show()
 
 def print_covering_shapes(shape_candidates, resources, boundaries, dimensions, start_time, isGrid, args):
     #TODO find set of shapes that allow to have at least 1 shape for each possible number of resources that one can ask for, given an alpha
