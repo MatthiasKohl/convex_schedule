@@ -93,21 +93,15 @@ def plot_metric_scatter_density(shape_candidates, resources, boundaries, dimensi
         for n, projections in shape_candidates.items()
     }
 
+    # TODO add alphas
     metric_values = np.array([[n, args[0](p)] for n, projections in shape_candidates.items() for p in projections])
-    print (metric_values.shape)
 
-    bins = [metric_values.shape[0], np.max(metric_values[:, 1])]
-    print(bins)
+    bins = [args[2], metric_values.shape[0]]
     #bins = [10, 10]
     hist, locx, locy = np.histogram2d(metric_values[:, 1], metric_values[:, 0], bins=bins)
     X, Y = np.meshgrid(locy, locx)
     hist = np.ma.masked_array(hist, hist < 1)
-    #plt.pcolormesh(X, Y, hist, vmin=1)
-    plt.imshow(hist, origin='low', interpolation='none')
-    # idx = z.argsort()
-    # x, y, z = metric_values[:, 0][idx], metric_values[:, 1][idx], z[idx]
-    # plt.scatter(x, y, c=z, s=20, label='density of ' + args[1] + ' with alpha=' + str(0), edgecolor='')
-    # plt.legend(loc='upper left')
+    plt.pcolormesh(X, Y, hist, vmin=1)
     plt.xlabel('Number of resources')
     plt.ylabel('Metric of shape')
     top = ' grid' if isGrid else ' torus'
@@ -265,17 +259,30 @@ def main(argv):
         elif opt == '--metricScatter':
             args = arg.split()
             metric = parseMetric(args[0])
-            if (not metric): break
+            if (not metric):
+                isError = True
+                break
             alphas = parseAlphaList(args[1:])
-            if (not alphas): break
+            if (not alphas):
+                isError = True
+                break
             fundefs.append((plot_metric_scatter, metric + alphas))
         elif opt == '--metricScatterDens':
             args = arg.split()
             metric = parseMetric(args[0])
-            if (not metric): break
-            alphas = parseAlphaList(args[1:])
-            if (not alphas): break
-            fundefs.append((plot_metric_scatter_density, metric + alphas))
+            if (not metric):
+                isError = True
+                break
+            try:
+                nBins = int(args[1])
+            except:
+                isError = True
+                break
+            alphas = parseAlphaList(args[2:])
+            if (not alphas):
+                isError = True
+                break
+            fundefs.append((plot_metric_scatter_density, metric + [nBins] + alphas))
         elif opt == '--coveringShapes':
             args = arg.split()
             metric = parseMetric(args[0])
