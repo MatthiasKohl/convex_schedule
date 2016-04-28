@@ -125,7 +125,7 @@ def plot_metric_scatter_density(shape_candidates, resources, dimensions, start_t
         plt.show()
 
 def print_covering_shapes(shape_candidates, resources, dimensions, start_time, isGrid, args):
-    # args: [metric function, metric name, alphas]
+    # args: [metric function, metric name, strategy, alphas]
     #TODO find set of shapes that allow to have at least 1 shape for each possible number of resources that one can ask for, given an alpha
     # + possibly find a set of shapes given an alpha and max metric that allow to allocate any possible number of resources
     shapes_metrics = {
@@ -134,45 +134,76 @@ def print_covering_shapes(shape_candidates, resources, dimensions, start_time, i
     }
 
     total = reduce(operator.mul, dimensions.values(), 1)
-    for alpha in args[2:]:
+    for alpha in args[3:]:
+        unCovered = -1
         shapes_satisfying_alpha = {total: shape_candidates[total]}
-        isCovered = False
-        for minSize in reversed(resources[:-1]):
-            cutOffSize = int(minSize + minSize*alpha)
-            # check if list already contains a shape that can satisfy this request
-            isCovered = False
-            for r in range(minSize + 1, cutOffSize + 1):
-                if (r in shapes_satisfying_alpha):
-                    isCovered = True
-                    break
-            if (isCovered):
-                continue
-            # take the first possible shapes that cover this resource
-            isCovered = False
+        if (args[2] == 'none'):
+            # no strategy: simply start from the highest resource, go down to lowest and add
+            # any resource which is not already covered
+            for minSize in reversed(resources[:-1]):
+                cutOffSize = int(minSize + minSize*alpha)
+                # check if list already contains a shape that can satisfy this request
+                isCovered = False
+                for r in range(minSize + 1, cutOffSize + 1):
+                    if (r in shapes_satisfying_alpha):
+                        isCovered = True
+                        break
+                if (isCovered):
+                    continue
 
-            # for r in range(minSize, cutOffSize + 1):
-            #     if (r in shape_candidates and shape_candidates[r]):
-            #         shapes_satisfying_alpha[r] = shape_candidates[r]
-            #         isCovered = True
-            #         break
-
-            # TODO this approach is not perfect, because it doesn't consider the whole distribution of
-            # metrics vs coverage
-            shapes_best_metrics = sorted([(n, m, p) for ((n, metrics), (n, projections)) in \
-                                         zip(shapes_metrics.items(), shape_candidates.items()) \
-                                         if n >= minSize and n <= cutOffSize for m, p in zip(metrics, projections)],
-                                         key = lambda x: x[1])[:1]
-            if (shapes_best_metrics):
-                isCovered = True
-                for n, m, p in shapes_best_metrics:
-                    shapes_satisfying_alpha[n] = shapes_satisfying_alpha.get(n, []) + [p]
-
-            if (not isCovered):
-                print('Cannot satisfy request for size ' + str(minSize) + ' with shapes using alpha ' + str(alpha) + ' and metric: ' + args[1])
+                # take the first possible shapes that cover this resource
+                unCovered = minSize
+                for r in range(minSize, cutOffSize + 1):
+                    if (r in shape_candidates and shape_candidates[r]):
+                        shapes_satisfying_alpha[r] = shape_candidates[r]
+                        unCovered = -1
+                        break
+            if (unCovered >= 0):
                 break
-        if (isCovered):
-            print ('Number of covering shapes for alpha ' + str(alpha) + ' : ' + str(len(shapes_satisfying_alpha)) + 'using metric '+ args[1] + '\tlist of covering resources: ' + str(sorted([n for n, projections in shapes_satisfying_alpha.items()])))
-            print ('Average metric (' + args[1] + '): ' + str(np.mean([args[0](p) for n, projections in shapes_satisfying_alpha.items() for p in projections])))
+        else:
+            # Go over best metric shapes, check if already covered. if not, include
+            # at the very end, check if all resources are covered
+
+            shapes_best_metrics = sorted([(n, projections) for n, projections in shape_candidates.items()],
+                                         key = lambda x: min(args[0](p, isGrid, dimensions) for p in x[1]))
+
+            for n, projections in shapes_best_metrics:
+                # check if n is covered
+                isCovered = False
+                cutOffSize = int(n + n*alpha)
+                for r in range(n, cutOffSize + 1):
+                    if (r in shapes_satisfying_alpha):
+                        isCovered = True
+                        break
+                if (isCovered):
+                    continue
+                # n is not covered, include it in the set
+                shapes_satisfying_alpha[n] = projections
+
+                # TODO this doesn't work because we need to check if we can include some shape to make the covering work completely once we know that some resource is not covered
+                # TODO there might be a better mechanism to check whether it's covered
+                # check if all resources are covered
+                isAllCovered = True
+                for n in resources:
+                    cutOffSize = int(n + n*alpha)
+                    unCovered = n
+                    for r in range(n, cutOffSize + 1):
+                        if (r in shapes_satisfying_alpha):
+                            unCovered = -1
+                            break
+                    if (unCovered >= 0):
+                        isAllCovered = False
+                        break
+                if (isAllCovered):
+                    break
+
+        if (unCovered < 0):
+            print ('Number of covering shapes for alpha ' + str(alpha) + ' : ' + str(len(shapes_satisfying_alpha)) + ' using metric '+ args[1] + '\nlist of covering resources (with best metric): ' + str(sorted([(n, min(args[0](p, isGrid, dimensions) for p in projections)) for n, projections in shapes_satisfying_alpha.items()], key=lambda x: x[0])))
+            bestMetrics = [sorted([args[0](p, isGrid, dimensions) for p in projections])[0] for n, projections in shapes_satisfying_alpha.items()]
+            print ('Average best metric (' + args[1] + '): ' + str(np.mean(bestMetrics)))
+        else:
+            print('Cannot satisfy request for size ' + str(unCovered) + ' with shapes using alpha ' + str(alpha) + ' and metric: ' + args[1])
+
 
 # MAIN function
 import sys, getopt
@@ -187,7 +218,7 @@ def usage():
     --maxMetric <args>\t\tplot the maximum metric for the given shapes per resources. this requires the following arguments: <metric> [alphas]. <metric> can be "diameter", "maxmin", "compactness". [alphas] is as in numShapes\n\
     --metricScatter <args>\tscatter plot of the given metric for the given shapes per resources. this requires the following arguments: <metric> [alphas], as in maxMetric\n\
     --metricScatterDens <args>\tdensity scatter plot of the given metric for the given shapes per resources. this requires the following arguments: <metric> [alphas], as in maxMetric\n\
-    --coveringShapes <args>\tprint a covering set of shapes/resources given alpha and metric for the given shapes. this requires the following arguments: <metric> [alphas], as in maxMetric\n\
+    --coveringShapes <args>\tprint a covering set of shapes/resources given alpha and metric for the given shapes. this requires the following arguments: <metric> [alphas] <strategy> - <metric> and [alphas] as in maxMetric, <strategy>: none, bestMetric\n\
     -d\t\t\t\tdebug option\n\
     -h --help\t\t\tprint this and exit')
 
@@ -306,11 +337,17 @@ def main(argv):
             if (not metric):
                 isError = True
                 break
-            alphas = parseAlphaList(args[1:])
-            if (not alphas):
+            strategy = 'none'
+            try:
+                float(args[-1])
+                alphas = parseAlphaList(args[1:])
+            except ValueError:
+                alphas = parseAlphaList(args[1:-1])
+                strategy = args[-1]
+            if (not alphas or not strategy):
                 isError = True
                 break
-            fundefs.append((print_covering_shapes, metric + alphas))
+            fundefs.append((print_covering_shapes, metric + [strategy] + alphas))
     if (isError or not boundaries):
         usage()
         sys.exit()
