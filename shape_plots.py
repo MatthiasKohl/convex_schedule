@@ -18,7 +18,7 @@ def print_max_shapes(shape_candidates, resources, boundaries, dimensions, start_
     max_num_shapes = sorted([(n, projections) for n, projections in shape_candidates.items()],
                  key=lambda x: len(x[1]))[-3:]
     for n, projections in max_num_shapes:
-        print(n)
+        print('#Shapes for n=' + str(n) + ' : ' + str(len(projections)))
 
 def plot_num_shapes(shape_candidates, resources, boundaries, dimensions, start_time, isGrid, args):
     numShapes = []
@@ -169,7 +169,7 @@ def print_covering_shapes(shape_candidates, resources, boundaries, dimensions, s
 import sys, getopt
 
 def usage():
-    print('Usage: ' + sys.argv[0] + ' [options] [list of boundaries of torus/grid]')
+    print('Usage: ' + sys.argv[0] + ' [options]')
     print('Options:\n\
     -b --boundaries\t\trequired: boundaries of the torus/grid as space-separated list of integers\n\
     -g --grid\t\t\tif a grid should be considered and not a torus\n\
@@ -216,7 +216,7 @@ def parseMetric(arg):
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, "hdb:g", ["help", "boundaries=", "grid", "maxShapes=", "numShapes=", "maxMetric=", "metricScatter=", "metricScatterDens=", "coveringShapes="])
+        opts, args = getopt.getopt(argv, "hdb:g", ["help", "boundaries=", "grid", "maxShapes", "numShapes=", "maxMetric=", "metricScatter=", "metricScatterDens=", "coveringShapes="])
     except getopt.GetoptError:
         print('getopt error')
         usage()
@@ -237,7 +237,7 @@ def main(argv):
             except:
                 pass
         elif opt == '--maxShapes':
-            fundefs.append((max_shapes, []))
+            fundefs.append((print_max_shapes, []))
         elif opt == '--numShapes':
             args = arg.split()
             isCumul = False
