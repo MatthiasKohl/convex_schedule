@@ -14,13 +14,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import gaussian_kde
 
-def print_max_shapes(shape_candidates, resources, boundaries, dimensions, start_time, isGrid, args):
+def print_max_shapes(shape_candidates, resources, dimensions, start_time, isGrid, args):
     max_num_shapes = sorted([(n, projections) for n, projections in shape_candidates.items()],
                  key=lambda x: len(x[1]))[-3:]
     for n, projections in max_num_shapes:
         print('#Shapes for n=' + str(n) + ' : ' + str(len(projections)))
 
-def plot_num_shapes(shape_candidates, resources, boundaries, dimensions, start_time, isGrid, args):
+def plot_num_shapes(shape_candidates, resources, dimensions, start_time, isGrid, args):
+    # args: [isShowCumulativeNumber, alphas]
     numShapes = []
     for i in resources:
             numShapes.append(num_potential_shapes(shape_candidates, i, 0))
@@ -41,14 +42,15 @@ def plot_num_shapes(shape_candidates, resources, boundaries, dimensions, start_t
     plt.xlabel('Number of resources')
     plt.ylabel('Number of shapes')
     top = ' grid' if isGrid else ' torus'
-    plt.title('Number of convex shapes in a ' + 'x'.join(map(str, boundaries)) + top +' for a given number of resources')
+    plt.title('Number of convex shapes in a ' + 'x'.join(map(str, dimensions.values())) + top +' for a given number of resources')
     plt.show()
 
-def plot_max_metric(shape_candidates, resources, boundaries, dimensions, start_time, isGrid, args):
+def plot_max_metric(shape_candidates, resources, dimensions, start_time, isGrid, args):
+    # args: [metric function, metric name, alphas]
     maxMetric = []
-    resources = range(1, reduce(operator.mul, boundaries, 1) + 1)
+    resources = range(1, reduce(operator.mul, dimensions.values(), 1) + 1)
     for i in resources:
-            maxMetric.append(max_potential_shape(shape_candidates, i, 0, args[0]))
+            maxMetric.append(max_potential_shape(shape_candidates, isGrid, dimensions, i, 0, args[0]))
 
     for alpha in args[2:]:
         maxMetricAlpha = []
@@ -60,12 +62,13 @@ def plot_max_metric(shape_candidates, resources, boundaries, dimensions, start_t
     plt.xlabel('Number of resources')
     plt.ylabel('Max metric of shapes')
     top = ' grid' if isGrid else ' torus'
-    plt.title('Maximum possible ' + args[1] + ' metric of convex shapes in a ' + 'x'.join(map(str, boundaries)) + top + ' for a given number of resources')
+    plt.title('Maximum possible ' + args[1] + ' metric of convex shapes in a ' + 'x'.join(map(str, dimensions.values())) + top + ' for a given number of resources')
     plt.show()
 
-def plot_metric_scatter(shape_candidates, resources, boundaries, dimensions, start_time, isGrid, args):
+def plot_metric_scatter(shape_candidates, resources, dimensions, start_time, isGrid, args):
+    # args: [metric function, metric name, alphas]
     shapes_metrics = {
-        n: {args[0](p) for p in projections}
+        n: {args[0](p, isGrid, dimensions) for p in projections}
         for n, projections in shape_candidates.items()
     }
 
@@ -83,12 +86,13 @@ def plot_metric_scatter(shape_candidates, resources, boundaries, dimensions, sta
         plt.xlabel('Number of resources')
         plt.ylabel('Metric of shape')
         top = ' grid' if isGrid else ' torus'
-        plt.title('Scatter plot of metric ' + args[1] + ' for convex shapes in a ' +  'x'.join(map(str, boundaries)) + top + ' for a given number of resources')
+        plt.title('Scatter plot of metric ' + args[1] + ' for convex shapes in a ' +  'x'.join(map(str, dimensions.values())) + top + ' for a given number of resources')
         plt.show()
 
-def plot_metric_scatter_density(shape_candidates, resources, boundaries, dimensions, start_time, isGrid, args):
+def plot_metric_scatter_density(shape_candidates, resources, dimensions, start_time, isGrid, args):
+    # args: [metric function, metric name, nBins, alphas]
     shapes_metrics = {
-        n: [args[0](p) for p in projections]
+        n: [args[0](p, isGrid, dimensions) for p in projections]
         for n, projections in shape_candidates.items()
     }
     for alpha in args[3:]:
@@ -96,35 +100,40 @@ def plot_metric_scatter_density(shape_candidates, resources, boundaries, dimensi
         for r in resources:
             cutOffSize = int(r + r*alpha)
             shapes_metric_scatter_alpha.extend([[r,m] for n, metrics in shapes_metrics.items() if n >= r and n <= cutOffSize for m in metrics])
-        densityPerResource = {}
-        for n,m in shapes_metric_scatter_alpha:
-            densityPerResource[n] = densityPerResource.get(n, 0) + 1
 
-        density = [densityPerResource[n] for n,m in shapes_metric_scatter_alpha]
+        # densityPerResource = {}
+        # for n,m in shapes_metric_scatter_alpha:
+        #     densityPerResource[n] = densityPerResource.get(n, 0) + 1
+        # density = [densityPerResource[n] for n,m in shapes_metric_scatter_alpha]
+        #plt.scatter(metric_values[:, 0], metric_values[:, 1], c=density, s=10)
 
         metric_values = np.array(shapes_metric_scatter_alpha)
-        #bins = [args[2], len(resources)]
-        #hist, locx, locy = np.histogram2d(metric_values[:, 1], metric_values[:, 0], bins=bins)
-        #X, Y = np.meshgrid(locy, locx)
-        #hist = np.ma.masked_array(hist, hist < 1)
-        #plt.pcolormesh(X, Y, hist, vmin=1
-        plt.scatter(metric_values[:, 0], metric_values[:, 1], c=density, s=10)
+        bins = [args[2], len(resources)]
+        hist, locy, locx = np.histogram2d(metric_values[:, 1], metric_values[:, 0], bins=bins)
+        X, Y = np.meshgrid(locx, locy)
+        hist = np.ma.masked_array(hist, hist < 1)
+        plt.pcolormesh(X, Y, hist, vmin=1)
+
+        print("Hist extent (first x, first y, last x, last y): (" + str(locx[0]) + ", " + str(locy[0]) + ", " + str(locx[-1]) + ", " + str(locy[-1]) + ") first/last values: " + str(hist[0][0]) + "/" + str(hist[-1][-1]))
+
+        #plt.imshow(hist, aspect='auto', origin='lower', interpolation='nearest', extent=(locx[0], locx[-1], locy[0], locy[-1]))
         plt.colorbar()
         plt.xlabel('Number of resources')
         plt.ylabel('Metric of shape')
         top = ' grid' if isGrid else ' torus'
-        plt.title('Scatter plot of metric ' + args[1] + ' for convex shapes in a ' +  'x'.join(map(str, boundaries)) + top + ' for a given number of resources (with alpha=' + str(alpha) + ')')
+        plt.title('Scatter plot of metric ' + args[1] + ' for convex shapes in a ' +  'x'.join(map(str, dimensions.values())) + top + ' for a given number of resources (with alpha=' + str(alpha) + ')')
         plt.show()
 
-def print_covering_shapes(shape_candidates, resources, boundaries, dimensions, start_time, isGrid, args):
+def print_covering_shapes(shape_candidates, resources, dimensions, start_time, isGrid, args):
+    # args: [metric function, metric name, alphas]
     #TODO find set of shapes that allow to have at least 1 shape for each possible number of resources that one can ask for, given an alpha
     # + possibly find a set of shapes given an alpha and max metric that allow to allocate any possible number of resources
     shapes_metrics = {
-        n: {args[0](p) for p in projections}
+        n: {args[0](p, isGrid, dimensions) for p in projections}
         for n, projections in shape_candidates.items()
     }
 
-    total = reduce(operator.mul, boundaries, 1)
+    total = reduce(operator.mul, dimensions.values(), 1)
     for alpha in args[2:]:
         shapes_satisfying_alpha = {total: shape_candidates[total]}
         isCovered = False
@@ -187,12 +196,12 @@ def char_range(c1, numChars):
 
 def handle_plot(isGrid, boundaries, func, args):
     resources = range(1, reduce(operator.mul, boundaries, 1) + 1)
-    dimensions = char_range('x', len(boundaries))
+    dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
     start_time = time.time()
     print('[' + str(time.time()-start_time) + '] Starting shapes computation')
-    candidates = shape_candidates("./primes", isGrid, dimensions, boundaries)
+    candidates = shape_candidates("./primes", isGrid, dimensions)
     print('[' + str(time.time()-start_time) + '] Computed all shapes')
-    func(candidates, resources, boundaries, dimensions, start_time, isGrid, args)
+    func(candidates, resources, dimensions, start_time, isGrid, args)
 
 def parseAlphaList(args):
     try:
