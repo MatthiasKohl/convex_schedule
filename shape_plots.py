@@ -135,11 +135,13 @@ def print_covering_shapes(shape_candidates, resources, dimensions, start_time, i
 
     total = reduce(operator.mul, dimensions.values(), 1)
     for alpha in args[3:]:
+        # TODO there might be a better mechanism to check whether a resource (integer) is covered
         unCovered = -1
         shapes_satisfying_alpha = {total: shape_candidates[total]}
         if (args[2] == 'none'):
             # no strategy: simply start from the highest resource, go down to lowest and add
             # any resource which is not already covered
+            # this gives the minimum-cardinality set of resources to cover any possible resource
             for minSize in reversed(resources[:-1]):
                 cutOffSize = int(minSize + minSize*alpha)
                 # check if list already contains a shape that can satisfy this request
@@ -158,44 +160,57 @@ def print_covering_shapes(shape_candidates, resources, dimensions, start_time, i
                         shapes_satisfying_alpha[r] = shape_candidates[r]
                         unCovered = -1
                         break
-            if (unCovered >= 0):
-                break
+                if (unCovered >= 0):
+                    break
         else:
-            # Go over best metric shapes, check if already covered. if not, include
-            # at the very end, check if all resources are covered
+            # This part is ignored for now, it is not directly related to the exact problem we're examining
 
-            shapes_best_metrics = sorted([(n, projections) for n, projections in shape_candidates.items()],
+
+            # Go over best metric shapes, check if all is covered. if not, include next shape
+            # this makes a very important assumption about the metric: it must not depend on
+            # the size of the shape, if not, high sizes get penalized
+
+            # sort by size (high->low) then by metric. this way, same metric values are sorted by size since 'sorted' is stable
+            shapes_best_metrics = sorted(sorted([(n, projections) for n, projections in shape_candidates.items()], key=lambda x: x[0], reverse=True),
                                          key = lambda x: min(args[0](p, isGrid, dimensions) for p in x[1]))
 
             for n, projections in shapes_best_metrics:
-                # check if n is covered
-                isCovered = False
-                cutOffSize = int(n + n*alpha)
-                for r in range(n, cutOffSize + 1):
-                    if (r in shapes_satisfying_alpha):
-                        isCovered = True
+                # add shapes until all resources are covered
+                unCovered = -1
+                for r in resources:
+                    isCovered = False
+                    cutOffSize = int(r + r*alpha)
+                    for r2 in range(r, cutOffSize + 1):
+                        if (r2 in shapes_satisfying_alpha):
+                            isCovered = True
+                            break
+                    if (not isCovered):
+                        unCovered = r
                         break
-                if (isCovered):
-                    continue
-                # n is not covered, include it in the set
+                if (unCovered < 0): # all is covered
+                    break
+                # everything is not covered yet, add a request size with its shapes
                 shapes_satisfying_alpha[n] = projections
 
-                # TODO this doesn't work because we need to check if we can include some shape to make the covering work completely once we know that some resource is not covered
-                # TODO there might be a better mechanism to check whether it's covered
-                # check if all resources are covered
-                isAllCovered = True
-                for n in resources:
-                    cutOffSize = int(n + n*alpha)
-                    unCovered = n
-                    for r in range(n, cutOffSize + 1):
-                        if (r in shapes_satisfying_alpha):
-                            unCovered = -1
-                            break
-                    if (unCovered >= 0):
-                        isAllCovered = False
-                        break
-                if (isAllCovered):
-                    break
+            # # TODO this doesn't work because we need to check if we can include some shape to make the covering work completely once we know that some resource is not covered
+            # # check if all resources are covered
+            # # try to cover any resources which are not yet covered
+            # for n in reversed(resources):
+            #     cutOffSize = int(n + n*alpha)
+            #     unCovered = n
+            #     for r in range(n, cutOffSize + 1):
+            #         if (r in shapes_satisfying_alpha):
+            #             unCovered = -1
+            #             break
+            #     if (unCovered < 0):
+            #         continue
+
+            #     # n is not covered, try to cover it using the best possible shape
+            #     covering_shapes = [(r, projections) for r, projections in shape_candidates.items() if r >= n and r <= cutOffSize]
+            #     if (not covering_shapes):
+            #         break
+            #     shapes_satisfying_alpha[n] = min(covering_shapes, key=lambda x: min(args[0](p, isGrid, dimensions) for p in x[1]))[1]
+
 
         if (unCovered < 0):
             print ('Number of covering shapes for alpha ' + str(alpha) + ' : ' + str(len(shapes_satisfying_alpha)) + ' using metric '+ args[1] + '\nlist of covering resources (with best metric): ' + str(sorted([(n, min(args[0](p, isGrid, dimensions) for p in projections)) for n, projections in shapes_satisfying_alpha.items()], key=lambda x: x[0])))
