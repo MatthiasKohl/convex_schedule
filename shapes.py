@@ -13,7 +13,6 @@ TMP_TORUS = 'torus'
 TMP_GRID = 'grid'
 TMP_SEP = '_'
 
-
 def process_candidates(s, dimensions):
     Projection = namedtuple('Projection', dimensions.keys())
     shape_candidates = {}
@@ -21,11 +20,11 @@ def process_candidates(s, dimensions):
         factors = line.split(',')
         if (len(factors) <= 2): continue
         n = int(factors[0])
-        shape_candidates[n] = shape_candidates.get(n, []) + [Projection(**{bin: int(factor) for bin, factor in zip(dimensions, factors[1:])})]
+        shape_candidates[n] = shape_candidates.get(n, []) +\
+        [Projection(**{bin: int(factor) for bin, factor in zip(dimensions.keys(), factors[1:])})]
     return shape_candidates
 
 def shape_candidates(extProc, isGrid, dimensions):
-    Projection = namedtuple('Projection', dimensions)
     tmp_top = TMP_TORUS
     if (isGrid): tmp_top = TMP_GRID
     tmpFileName = TMP_SHAPES + TMP_SEP + tmp_top + TMP_SEP + 'x'.join(map(str, dimensions.values())) + TMP_EXT
