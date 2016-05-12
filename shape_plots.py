@@ -31,10 +31,11 @@ def plot_num_shapes(shape_candidates, resources, dimensions, start_time, isGrid,
     if (args[0]):
         plt.plot(resources, numCumulShapes, label='cumulative number of shapes')
 
+    total = reduce(operator.mul, dimensions.values(), 1)
     for alpha in args[1:]:
         numShapesAlpha = []
         for r in resources:
-            cutOffSize = int(r+r*alpha)
+            cutOffSize = min(int(r+r*alpha), total)
             numShapesAlpha.append(sum(numShapes[r-1:cutOffSize-1+1]))
         print('[' + str(time.time()-start_time) + '] plotting numShapes for alpha ' + str(alpha))
         plt.plot(resources, numShapesAlpha, label='#shapes for alpha=' + str(alpha))
@@ -72,10 +73,11 @@ def plot_metric_scatter(shape_candidates, resources, dimensions, start_time, isG
         for n, projections in shape_candidates.items()
     }
 
+    total = reduce(operator.mul, dimensions.values(), 1)
     for alpha in args[2:]:
         shapes_metric_scatter_alpha = {}
         for r in resources:
-            cutOffSize = int(r + r*alpha)
+            cutOffSize = min(int(r + r*alpha), total)
             shapes_metric_scatter_alpha[r] = {m for n, metrics in shapes_metrics.items() if n >= r and n <= cutOffSize for m in metrics}
         scatter_metric_base = [n for n, metrics in shapes_metric_scatter_alpha.items() for m in metrics]
         scatter_metric_values = [m for n, metrics in shapes_metric_scatter_alpha.items() for m in metrics]
@@ -95,10 +97,11 @@ def plot_metric_scatter_density(shape_candidates, resources, dimensions, start_t
         n: [args[0](p, isGrid, dimensions) for p in projections]
         for n, projections in shape_candidates.items()
     }
+    total = reduce(operator.mul, dimensions.values(), 1)
     for alpha in args[3:]:
         shapes_metric_scatter_alpha = []
         for r in resources:
-            cutOffSize = int(r + r*alpha)
+            cutOffSize = min(int(r + r*alpha), total)
             shapes_metric_scatter_alpha.extend([[r,m] for n, metrics in shapes_metrics.items() if n >= r and n <= cutOffSize for m in metrics])
 
         # densityPerResource = {}
@@ -124,6 +127,26 @@ def plot_metric_scatter_density(shape_candidates, resources, dimensions, start_t
         plt.title('Scatter plot of metric ' + args[1] + ' for convex shapes in a ' +  'x'.join(map(str, dimensions.values())) + top + ' for a given number of resources (with alpha=' + str(alpha) + ')')
         plt.show()
 
+# return the number of resources covered if resource r is added to shapes_satisfying_alpha, for a given alpha
+def numCovered(r, alpha, shapes_satisfying_alpha, maxSize):
+    coveredMinR = max(1, int(r/(1+alpha)) + 1)
+    possibleCovered = r - coveredMinR + 1
+    for n, projs in shapes_satisfying_alpha.items():
+        coveredMinN = max(1, int(n/(1 + alpha)) + 1)
+        if (r < coveredMinN or coveredMinR > n):
+            continue
+        if (coveredMinR >= coveredMinN and r <= n):
+            return 0
+        if (coveredMinR < coveredMinN):
+            possibleCovered = possibleCovered - (r - coveredMinN + 1)
+            r = coveredMinN - 1
+        if (r > n):
+            possibleCovered = possibleCovered - (n - coveredMinR + 1)
+            coveredMinR = n + 1
+    if (possibleCovered <= 0):
+        return 0
+    return possibleCovered
+
 def print_covering_shapes(shape_candidates, resources, dimensions, start_time, isGrid, args):
     # args: [metric function, metric name, strategy, alphas]
     #TODO possibly find a set of shapes given an alpha and max metric that allow to allocate any possible number of resources
@@ -142,7 +165,7 @@ def print_covering_shapes(shape_candidates, resources, dimensions, start_time, i
             # any resource which is not already covered
             # this gives the minimum-cardinality set of resources to cover any possible resource
             for minSize in reversed(resources[:-1]):
-                cutOffSize = int(minSize + minSize*alpha)
+                cutOffSize = min(int(minSize + minSize*alpha), total)
                 # check if list already contains a shape that can satisfy this request
                 isCovered = False
                 for r in range(minSize + 1, cutOffSize + 1):
@@ -168,33 +191,62 @@ def print_covering_shapes(shape_candidates, resources, dimensions, start_time, i
             # this makes a very important assumption about the metric: it must not depend on
             # the size of the shape, if not, high sizes get penalized
 
-            # sort by size (high->low) then by metric. this way, same metric values are sorted by size since 'sorted' is stable
-            shapes_best_metrics = sorted(sorted([(n, projections) for n, projections in shape_candidates.items()], key=lambda x: x[0], reverse=True),
-                                         key = lambda x: min(args[0](p, isGrid, dimensions) for p in x[1]))
+            # group by best metric, then sort by best metric
+            shapes_best_metrics = [(min(args[0](p, isGrid, dimensions) for p in projections), n, projections) for n, projections in shape_candidates.items()]
+            metric_values = sorted(set(map(lambda x: x[0], shapes_best_metrics)))
+            shapes_best_metrics_grouped = [[x for x in shapes_best_metrics if x[0] == m] for m in metric_values]
 
-            for n, projections in shapes_best_metrics:
-                # add shapes until all resources are covered
-                unCovered = -1
-                for r in resources:
-                    isCovered = False
-                    cutOffSize = int(r + r*alpha)
-                    for r2 in range(r, cutOffSize + 1):
-                        if (r2 in shapes_satisfying_alpha):
-                            isCovered = True
+            for projections_list in shapes_best_metrics_grouped:
+                #print("size of list: " + str(len(projections_list)) + " - best metric: " + str(projections_list[0][0]))
+                # choose the resource from list which covers the most space left, remove any resources that do not cover anything
+                while (projections_list):
+                    maxCovered = max(projections_list, key=lambda x: numCovered(x[1], alpha, shapes_satisfying_alpha, total))
+                    projections_list.remove(maxCovered)
+                    (m, n, projections) = maxCovered
+                    if (numCovered(n, alpha, shapes_satisfying_alpha, total) <= 0):
+                        continue
+                    #print("n : " + str(n) + ", m : " + str(m))
+
+                    # add shapes until all resources are covered
+                    unCovered = -1
+                    for r in resources:
+                        isCovered = False
+                        cutOffSize = min(int(r + r*alpha), total)
+                        for r2 in range(r, cutOffSize + 1):
+                            if (r2 in shapes_satisfying_alpha):
+                                isCovered = True
+                                break
+                        if (not isCovered):
+                            unCovered = r
                             break
-                    if (not isCovered):
-                        unCovered = r
+                    if (unCovered < 0): # all is covered
                         break
+                    # everything is not covered yet, add a request size with its shapes
+                    #print(str(n) + " - unCovered: " + str(unCovered) + " - numCovered: " + str(numCovered(n, alpha, shapes_satisfying_alpha, total)))
+                    shapes_satisfying_alpha[n] = projections
+
                 if (unCovered < 0): # all is covered
                     break
-                # everything is not covered yet, add a request size with its shapes
-                shapes_satisfying_alpha[n] = projections
+
+            # check if anything is not covered (something might have been added in last iteration)
+            unCovered = -1
+            for r in resources:
+                isCovered = False
+                cutOffSize = min(int(r + r*alpha), total)
+                for r2 in range(r, cutOffSize + 1):
+                    if (r2 in shapes_satisfying_alpha):
+                        isCovered = True
+                        break
+                if (not isCovered):
+                    unCovered = r
+                    break
+
 
             # # TODO this doesn't work because we need to check if we can include some shape to make the covering work completely once we know that some resource is not covered
             # # check if all resources are covered
             # # try to cover any resources which are not yet covered
             # for n in reversed(resources):
-            #     cutOffSize = int(n + n*alpha)
+            #     cutOffSize = min(int(n + n*alpha), total)
             #     unCovered = n
             #     for r in range(n, cutOffSize + 1):
             #         if (r in shapes_satisfying_alpha):
