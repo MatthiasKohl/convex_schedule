@@ -126,8 +126,7 @@ def plot_metric_scatter_density(shape_candidates, resources, dimensions, start_t
 
 def print_covering_shapes(shape_candidates, resources, dimensions, start_time, isGrid, args):
     # args: [metric function, metric name, strategy, alphas]
-    #TODO find set of shapes that allow to have at least 1 shape for each possible number of resources that one can ask for, given an alpha
-    # + possibly find a set of shapes given an alpha and max metric that allow to allocate any possible number of resources
+    #TODO possibly find a set of shapes given an alpha and max metric that allow to allocate any possible number of resources
     shapes_metrics = {
         n: {args[0](p, isGrid, dimensions) for p in projections}
         for n, projections in shape_candidates.items()
@@ -164,7 +163,6 @@ def print_covering_shapes(shape_candidates, resources, dimensions, start_time, i
                     break
         else:
             # This part is ignored for now, it is not directly related to the exact problem we're examining
-
 
             # Go over best metric shapes, check if all is covered. if not, include next shape
             # this makes a very important assumption about the metric: it must not depend on
@@ -226,14 +224,14 @@ import sys, getopt
 def usage():
     print('Usage: ' + sys.argv[0] + ' [options]')
     print('Options:\n\
-    -b --boundaries\t\trequired: boundaries of the torus/grid as space-separated list of integers\n\
+    -b --boundaries=<args>\t\trequired: boundaries of the torus/grid as space-separated list of integers\n\
     -g --grid\t\t\tif a grid should be considered and not a torus\n\
     --maxShapes\t\t\tprint the amount of resources which yield the maximum number of shapes\n\
-    --numShapes <args>\t\tplot the number of shapes per resources. this requires the following arguments: [alphas] <cumulative>. alphas can be either of: list <list of alpha> specifying a list of alphas to plot or <alpha start> <alpha end> <alpha step>. <cumulative> is a boolean to plot the cumulative number of shapes\n\
-    --maxMetric <args>\t\tplot the maximum metric for the given shapes per resources. this requires the following arguments: <metric> [alphas]. <metric> can be "diameter", "maxmin", "compactness". [alphas] is as in numShapes\n\
-    --metricScatter <args>\tscatter plot of the given metric for the given shapes per resources. this requires the following arguments: <metric> [alphas], as in maxMetric\n\
-    --metricScatterDens <args>\tdensity scatter plot of the given metric for the given shapes per resources. this requires the following arguments: <metric> [alphas], as in maxMetric\n\
-    --coveringShapes <args>\tprint a covering set of shapes/resources given alpha and metric for the given shapes. this requires the following arguments: <metric> [alphas] <strategy> - <metric> and [alphas] as in maxMetric, <strategy>: none, bestMetric\n\
+    --numShapes=<args>\t\tplot the number of shapes per resources. this requires the following arguments: [alphas] <cumulative>. alphas can be either of: list <list of alpha> specifying a list of alphas to plot or <alpha start> <alpha end> <alpha step>. <cumulative> is a boolean to plot the cumulative number of shapes\n\
+    --maxMetric=<args>\t\tplot the maximum metric for the given shapes per resources. this requires the following arguments: <metric> [alphas]. <metric> can be "diameter", "maxmin", "compactness". [alphas] is as in numShapes\n\
+    --metricScatter=<args>\tscatter plot of the given metric for the given shapes per resources. this requires the following arguments: <metric> [alphas], as in maxMetric\n\
+    --metricScatterDens=<args>\tdensity scatter plot of the given metric for the given shapes per resources. this requires the following arguments: <metric> [alphas], as in maxMetric\n\
+    --coveringShapes=<args>\tprint a covering set of shapes/resources given alpha and metric for the given shapes. this requires the following arguments: <metric> [alphas] <strategy> - <metric> and [alphas] as in maxMetric, <strategy>: none, bestMetric\n\
     -d\t\t\t\tdebug option\n\
     -h --help\t\t\tprint this and exit')
 
