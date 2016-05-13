@@ -269,6 +269,13 @@ def print_covering_shapes(shape_candidates, resources, dimensions, start_time, i
         else:
             print('Cannot satisfy request for size ' + str(unCovered) + ' with shapes using alpha ' + str(alpha) + ' and metric: ' + args[1])
 
+def print_metrics(shape_candidates, resources, dimensions, start_time, isGrid, args):
+    # args: list of resources
+    numRes = len(args)
+    print("Number of given resources: " + str(numRes))
+    for metric, metric_name in [(metric_diameter, "diameter"), (metric_max_min, "max-min"), (metric_compactness, "compactness")]:
+        metricSum = sum(map(lambda r: min(metric(p, isGrid, dimensions) for p in shape_candidates[r]), args))
+        print("Average best " + metric_name + " : " + str(metricSum/numRes))
 
 # MAIN function
 import sys, getopt
@@ -284,6 +291,7 @@ def usage():
     --metricScatter=<args>\tscatter plot of the given metric for the given shapes per resources. this requires the following arguments: <metric> [alphas], as in maxMetric\n\
     --metricScatterDens=<args>\tdensity scatter plot of the given metric for the given shapes per resources. this requires the following arguments: <metric> [alphas], as in maxMetric\n\
     --coveringShapes=<args>\tprint a covering set of shapes/resources given alpha and metric for the given shapes. this requires the following arguments: <metric> [alphas] <strategy> - <metric> and [alphas] as in maxMetric, <strategy>: none, bestMetric\n\
+    --metrics=<args>\tprint metrics about a set of resources. <args> is either a range or a list as alphas in maxShapes\n\
     -d\t\t\t\tdebug option\n\
     -h --help\t\t\tprint this and exit')
 
@@ -299,14 +307,14 @@ def handle_plot(isGrid, boundaries, func, args):
     print('[' + str(time.time()-start_time) + '] Computed all shapes')
     func(candidates, resources, dimensions, start_time, isGrid, args)
 
-def parseAlphaList(args):
+def parseList(args, mapping):
     try:
         if (args[0] == 'list'):
-            return [float(f) for f in args[1:]]
+            return [mapping(f) for f in args[1:]]
         else:
             return  [i for i in np.arange(float(args[0]), float(args[1]), float(args[2]))]
     except:
-        print('Error specifying alphas: ' + str(args))
+        print('Error specifying list: ' + str(args))
         return []
 
 def parseMetric(arg):
@@ -321,7 +329,7 @@ def parseMetric(arg):
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, "hdb:g", ["help", "boundaries=", "grid", "maxShapes", "numShapes=", "maxMetric=", "metricScatter=", "metricScatterDens=", "coveringShapes="])
+        opts, args = getopt.getopt(argv, "hdb:g", ["help", "boundaries=", "grid", "maxShapes", "numShapes=", "maxMetric=", "metricScatter=", "metricScatterDens=", "coveringShapes=", "metrics="])
     except getopt.GetoptError:
         print('getopt error')
         usage()
@@ -351,9 +359,9 @@ def main(argv):
             except ValueError:
                 isCumul = True
             if (isCumul):
-                alphas = parseAlphaList(args[:-1])
+                alphas = parseList(args[:-1], float)
             else:
-                alphas = parseAlphaList(args)
+                alphas = parseList(args, float)
             if (not alphas):
                 isError = True
                 break
@@ -364,7 +372,7 @@ def main(argv):
             if (not metric):
                 isError = True
                 break
-            alphas = parseAlphaList(args[1:])
+            alphas = parseList(args[1:], float)
             if (not alphas):
                 isError = True
                 break
@@ -375,7 +383,7 @@ def main(argv):
             if (not metric):
                 isError = True
                 break
-            alphas = parseAlphaList(args[1:])
+            alphas = parseList(args[1:], float)
             if (not alphas):
                 isError = True
                 break
@@ -391,7 +399,7 @@ def main(argv):
             except:
                 isError = True
                 break
-            alphas = parseAlphaList(args[2:])
+            alphas = parseList(args[2:], float)
             if (not alphas):
                 isError = True
                 break
@@ -405,14 +413,20 @@ def main(argv):
             strategy = 'none'
             try:
                 float(args[-1])
-                alphas = parseAlphaList(args[1:])
+                alphas = parseList(args[1:], float)
             except ValueError:
-                alphas = parseAlphaList(args[1:-1])
+                alphas = parseList(args[1:-1], float)
                 strategy = args[-1]
             if (not alphas or not strategy):
                 isError = True
                 break
             fundefs.append((print_covering_shapes, metric + [strategy] + alphas))
+        elif opt == '--metrics':
+            resources = parseList(arg.split(), int)
+            if (not resources):
+                isError = True
+                break
+            fundefs.append((print_metrics, resources))
     if (isError or not boundaries):
         usage()
         sys.exit()
