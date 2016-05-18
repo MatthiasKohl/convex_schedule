@@ -37,7 +37,7 @@ def plot_num_shapes(shape_candidates, resources, dimensions, start_time, isGrid,
         for r in resources:
             cutOffSize = min(int(r+r*alpha), total)
             numShapesAlpha.append(sum(numShapes[r-1:cutOffSize-1+1]))
-        max_num_shapes = sorted(enumerate(numShapesAlpha), key=lambda x: x[1])[-3:]
+        max_num_shapes = sorted(zip(resources, numShapesAlpha), key=lambda x: x[1])[-3:]
         print('[' + str(time.time()-start_time) + '] plotting numShapes for alpha ' + str(alpha) +
               ' -> max numShapes: ' + "||".join(map(lambda x: str(x[1]) + ' (resource: ' + str(x[0]) + ')', max_num_shapes)))
         plt.plot(resources, numShapesAlpha, label='#shapes for alpha=' + str(alpha))
