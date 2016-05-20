@@ -18,9 +18,17 @@ class ConvexSpace:
                 return False
         return True
 
+    def contains(self, other):
+        for thisCoord, thisD, otherCoord, otherD in zip(self.coordinates, self.boundaries,
+                                                other.coordinates, other.boundaries):
+            if (otherCoord < thisCoord or otherCoord > thisCoord + thisD
+                or otherCoord + otherD > thisCoord + thisD):
+                return False
+        return True
+
     # in principle, each dimension can be cut in 2 new ConvexSpaces
     # this is unless there is no space left at any or both sides of this ConvexSpace
-    def intersect(self, other):
+    def minus(self, other):
         newSpaces = []
         for (i, thisCoord), thisD, otherCoord, otherD in zip(enumerate(self.coordinates),
                                                               self.boundaries, other.coordinates, other.boundaries):
@@ -34,6 +42,29 @@ class ConvexSpace:
                 newBoundaries = list(self.boundaries)
                 newBoundaries[i] = (thisCoord + thisD) - (otherCoord + otherD)
                 newSpaces.append(ConvexSpace(newCoordinates, newBoundaries))
+        return newSpaces
+
+    # try to join two spaces over the i-th dimension
+    def join(self, other, i):
+        # first check if all dimensions overlap (we can only join in that case)
+        overlaps = []
+        for thisCoord, thisD, otherCoord, otherD in zip(self.coordinates, self.boundaries,
+                                                        other.coordinates, other.boundaries):
+            if (otherCoord + otherD >= thisCoord and otherCoord + otherD < thisCoord + thisD):
+                newCoord = max(thisCoord, otherCoord)
+                overlaps.append((newCoord, otherCoord + otherD - newCoord))
+            elif (otherCoord >= thisCoord and otherCoord <= thisCoord + thisD):
+                overlaps.append((otherCoord, min(otherCoord + otherD, thisCoord + thisD)))
+            else:
+                overlaps = []
+                break
+        if (not overlaps):
+            return []
+        # TODO: take i-th overlap and create the overlap space. if any dimension is 0, return
+        # if not, subtract this new space from the previous spaces and return all resulting spaces
+        # which are not contained in any of the other spaces
+        newSpaces = []
+
         return newSpaces
 
     def __str__(self):
@@ -61,7 +92,10 @@ class Bin:
         print('Fitting ' + str(boundariesToFit) + ' into ' + str(freeSpace))
         self.spaces.append(assignedSpace)
         self.freelist.remove(freeSpace)
-        newFreeSpaces = freeSpace.intersect(assignedSpace)
+        newFreeSpaces = freeSpace.minus(assignedSpace)
+        for newSpace in newFreeSpaces:
+            for space in self.freelist:
+                space.join(newSpace, reversed(range(len(boundariesToFit))))
         print('New free spaces: ' + str([str(x) for x in newFreeSpaces]))
         self.freelist.extend(newFreeSpaces)
 
