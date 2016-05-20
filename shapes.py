@@ -13,6 +13,9 @@ TMP_TORUS = 'torus'
 TMP_GRID = 'grid'
 TMP_SEP = '_'
 
+def char_range(c1, numChars):
+    return [chr(c) for c in range(ord(c1), ord(c1)+numChars)]
+
 def process_candidates(s, dimensions):
     Projection = namedtuple('Projection', dimensions.keys())
     shape_candidates = {}

@@ -3,7 +3,8 @@
 
 from shapes import shape_candidates, max_potential_shape, num_potential_shapes,\
 metric_max_min, metric_average_distance, metric_distance_from_center,\
-metric_diameter, metric_compactness, metric_nodes_affected, metric_links_affected
+metric_diameter, metric_compactness, metric_nodes_affected, metric_links_affected,\
+char_range
 
 import operator
 from collections import namedtuple
@@ -296,9 +297,6 @@ def usage():
     --metrics=<args>\tprint metrics about a set of resources. <args> is either a range or a list as alphas in maxShapes\n\
     -d\t\t\t\tdebug option\n\
     -h --help\t\t\tprint this and exit')
-
-def char_range(c1, numChars):
-    return [chr(c) for c in range(ord(c1), ord(c1)+numChars)]
 
 def handle_plot(isGrid, boundaries, func, args):
     resources = range(1, reduce(operator.mul, boundaries, 1) + 1)
