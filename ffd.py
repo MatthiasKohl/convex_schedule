@@ -44,32 +44,54 @@ class ConvexSpace:
                 newSpaces.append(ConvexSpace(newCoordinates, newBoundaries))
         return newSpaces
 
-    # try to join two spaces over the i-th dimension
-    def join(self, other, i):
-        # first check if all dimensions overlap (we can only join in that case)
-        overlaps = []
+    # return intersection between this space and another as
+    # a list of intervals in all dimensions or an empty list (if no intersection)
+    def intersection(self, other):
+        intersection = []
         for thisCoord, thisD, otherCoord, otherD in zip(self.coordinates, self.boundaries,
                                                         other.coordinates, other.boundaries):
             if (otherCoord + otherD >= thisCoord and otherCoord + otherD < thisCoord + thisD):
                 newCoord = max(thisCoord, otherCoord)
-                overlaps.append((newCoord, otherCoord + otherD - newCoord))
+                intersection.append((newCoord, otherCoord + otherD - newCoord))
             elif (otherCoord >= thisCoord and otherCoord <= thisCoord + thisD):
-                overlaps.append((otherCoord, min(otherCoord + otherD, thisCoord + thisD)))
+                intersection.append((otherCoord, min(otherCoord + otherD, thisCoord + thisD)))
             else:
-                overlaps = []
+                intersection = []
                 break
-        if (not overlaps):
-            return []
-        # TODO: take i-th overlap and create the overlap space. if any dimension is 0, return
-        # if not, subtract this new space from the previous spaces and return all resulting spaces
-        # which are not contained in any of the other spaces
-        newSpaces = []
+        return intersection
 
-        return newSpaces
+    # try to join two spaces over the i-th dimension
+    def join(self, other, i):
+        # if one space is contained in the other, return the greater one
+        if (self.contains(other)):
+            return [self]
+        if (other.contains(self)):
+            return [other]
+        # check if all dimensions overlap (we can only join in that case)
+        intersection = self.intersection(other)
+        if (not intersection):
+            return []
+        # if any dimension of the intersection is 0 (except for the i-th),
+        # return (can not join in that case)
+        if (any(map(lambda x: False if x[0] == i else x[1] == 0, enumerate(intersection)))):
+            return []
+
+        # take full interval of both spaces in i-th dimension
+        # and all other intervals as is from intersection to create joined space
+        joinedCoordinates = [x[0] for x in intersection]
+        joinedCoordinates[i] = min(self.coordinates[i], other.coordinates[i])
+        joinedBoundaries = [x[1]-x[0] for x in intersection]
+        joinedBoundaries[i] = max(self.coordinates[i] + self.boundaries[i],
+                                  other.coordinates[i] + other.boundaries[i]) - joinedCoordinates[i]
+        joinedSpace = ConvexSpace(joinedCoordinates, joinedBoundaries)
+
+        # subtract the original spaces from the joined space and return all resulting spaces
+        # which are not contained in the joined space already
+        return [s for s in [joinedSpace] + joinedSpace.minus(self) +
+        joinedSpace.minus(other) if s == joinedSpace or not joinedSpace.contains(s)]
 
     def __str__(self):
         return str(self.coordinates) + ' -> ' + str(self.boundaries)
-
 
 class Bin:
     def __init__(self, boundaries):
