@@ -1,6 +1,7 @@
 #! /usr/bin/python3
 # -*- encoding: utf-8 -*-
 
+import math
 import operator
 from functools import reduce
 import random
@@ -46,19 +47,28 @@ class ConvexSpace:
 
     # return intersection between this space and another as
     # a list of intervals in all dimensions or an empty list (if no intersection)
-    def intersection(self, other):
-        intersection = []
+    def intersectionIntervals(self, other):
+        intervals = []
         for thisCoord, thisD, otherCoord, otherD in zip(self.coordinates, self.boundaries,
                                                         other.coordinates, other.boundaries):
-            if (otherCoord + otherD >= thisCoord and otherCoord + otherD < thisCoord + thisD):
+            if (otherCoord + otherD >= thisCoord and otherCoord + otherD <= thisCoord + thisD):
                 newCoord = max(thisCoord, otherCoord)
-                intersection.append((newCoord, otherCoord + otherD - newCoord))
+                intervals.append((newCoord, otherCoord + otherD - newCoord))
             elif (otherCoord >= thisCoord and otherCoord <= thisCoord + thisD):
-                intersection.append((otherCoord, min(otherCoord + otherD, thisCoord + thisD)))
+                newMaxCoord = min(thisCoord + thisD, otherCoord + otherD)
+                intervals.append((otherCoord, newMaxCoord - otherCoord))
             else:
-                intersection = []
+                intervals = []
                 break
-        return intersection
+        return intervals
+
+    # return the intersection of this space and another as a new space
+    # if no intersection possible, the new space has dimensions 0
+    def intersection(self, other):
+        intervals = self.intersectionIntervals(other)
+        if (not intervals):
+            return ConvexSpace([0 for x in self.coordinates], [0 for x in self.boundaries])
+        return ConvexSpace([x[0] for x in intervals], [x[1] for x in intervals])
 
     # try to join two spaces over the i-th dimension
     def join(self, other, i):
@@ -68,27 +78,29 @@ class ConvexSpace:
         if (other.contains(self)):
             return [other]
         # check if all dimensions overlap (we can only join in that case)
-        intersection = self.intersection(other)
+        intersection = self.intersectionIntervals(other)
+        #print('Intersection intervals: ' + str(intersection))
         if (not intersection):
             return []
         # if any dimension of the intersection is 0 (except for the i-th),
         # return (can not join in that case)
-        if (any(map(lambda x: False if x[0] == i else x[1] == 0, enumerate(intersection)))):
+        if (any([d != i and s == 0 for d, (c, s) in enumerate(intersection)])):
             return []
 
         # take full interval of both spaces in i-th dimension
         # and all other intervals as is from intersection to create joined space
         joinedCoordinates = [x[0] for x in intersection]
         joinedCoordinates[i] = min(self.coordinates[i], other.coordinates[i])
-        joinedBoundaries = [x[1]-x[0] for x in intersection]
+        joinedBoundaries = [x[1] for x in intersection]
         joinedBoundaries[i] = max(self.coordinates[i] + self.boundaries[i],
                                   other.coordinates[i] + other.boundaries[i]) - joinedCoordinates[i]
         joinedSpace = ConvexSpace(joinedCoordinates, joinedBoundaries)
 
-        # subtract the original spaces from the joined space and return all resulting spaces
+        # subtract the intersection from the original spaces and return all resulting spaces
         # which are not contained in the joined space already
-        return [s for s in [joinedSpace] + joinedSpace.minus(self) +
-        joinedSpace.minus(other) if s == joinedSpace or not joinedSpace.contains(s)]
+        return [s for s in [joinedSpace] + self.minus(self.intersection(joinedSpace)) +
+        other.minus(other.intersection(joinedSpace))
+        if s == joinedSpace or not joinedSpace.contains(s)]
 
     def __str__(self):
         return str(self.coordinates) + ' -> ' + str(self.boundaries)
@@ -102,24 +114,62 @@ class Bin:
         return any([space.canFit(boundariesToFit) for space in self.freelist])
 
     # fit the given boundaries in this bin over the i-th dimension
-    # (free spaces are sorted over all other boundaries first, then i-th dimension)
+    # (free spaces are sorted over all other dimensions first, then i-th dimension)
     # this assumes that canFit was called before
     def fit(self, boundariesToFit, i):
         freeSpace = min(filter(lambda s: s.canFit(boundariesToFit), self.freelist),
                     key=lambda s: [x for d, x in enumerate(s.coordinates) if d != i] + [s.coordinates[i]])
         assignedSpace = ConvexSpace(list(freeSpace.coordinates), list(boundariesToFit))
-        # TODO: need to check if new free spaces can be joined with old ones (to form a greater convex space)
-        # should only join over a given order of dimensions (order in which requests are being assigned)
-        # TODO: add unit tests by checking if a configuration is possible (respects request sizes/alpha, no overlaps inside bin, all requests are inside bounds of bin)
-        print('Fitting ' + str(boundariesToFit) + ' into ' + str(freeSpace))
+        #print('Fitting ' + str(boundariesToFit) + ' into ' + str(freeSpace))
         self.spaces.append(assignedSpace)
         self.freelist.remove(freeSpace)
+
+        # TODO this doesn't work. need to come up with a better idea of how to join
+        # multiple spaces together (for example, for every pair, choose the dimension which
+        # gives the biggest sizes according to reverse order of dimensions)
+        # while it's possible to join any pair of new free spaces, replace the pair with
+        # the joined spaces. join over all dimensions except first one (never needed)
+        # and in reverse order
         newFreeSpaces = freeSpace.minus(assignedSpace)
-        for newSpace in newFreeSpaces:
-            for space in self.freelist:
-                space.join(newSpace, reversed(range(len(boundariesToFit))))
-        print('New free spaces: ' + str([str(x) for x in newFreeSpaces]))
+        tryToJoin = len(newFreeSpaces) >= 2
+        while (tryToJoin):
+            for d in reversed(range(1, len(boundariesToFit))):
+                tryToJoin = False
+                for idx1 in range(len(newFreeSpaces)):
+                    for idx2 in range(idx1 + 1, len(newFreeSpaces)):
+                        fs1 = newFreeSpaces[idx1]
+                        fs2 = newFreeSpaces[idx2]
+                        print('Trying to join ' + str(fs1) + ' and ' + str(fs2) + ' over dimension ' + str(d))
+                        joinedSpaces = fs1.join(fs2, d)
+                        if (joinedSpaces):
+                            print('Joined spaces: ' + str([str(x) for x in joinedSpaces]))
+                            newFreeSpaces.remove(fs1)
+                            newFreeSpaces.remove(fs2)
+                            newFreeSpaces.extend(joinedSpaces)
+                            tryToJoin = True
+                            break
+                    if (tryToJoin):
+                        break
+                if (tryToJoin):
+                    break # start over with first dimension
+
+        #print('New free spaces: ' + str([str(x) for x in newFreeSpaces]))
         self.freelist.extend(newFreeSpaces)
+
+    # simple test to check if a bin configuration is possible according to given boundaries
+    def testPossible(self, boundaries):
+        # check that no space goes outside of given boundaries
+        allSpaces = self.freelist + self.spaces
+        boundarySpace = ConvexSpace([0 for x in boundaries], boundaries)
+        if (not all(boundarySpace.contains(s) for s in allSpaces)):
+            return False
+        # check that there is no intersection between any two spaces
+        for idx1 in range(len(allSpaces)):
+            for idx2 in range(idx1 + 1, len(allSpaces)):
+                intervals = allSpaces[idx1].intersectionIntervals(allSpaces[idx2])
+                if (intervals and all(s > 0 for c, s in intervals)):
+                    return False
+        return True
 
     def __str__(self):
         s = ''
@@ -168,17 +218,28 @@ def randomRequestsFFD(boundaries):
     total = reduce(operator.mul, boundaries, 1)
     random.seed()
     # random amount of requests with random sizes (lower than half of total size)
-    # TODO: there is a bug with this
     requestSizes = []
     for i in range(random.randint(1, 100)):
         requestSizes.append(random.randint(1, total/boundaries[0]))
+
     # get bin packing
     bins = firstFitDecreasing(boundaries, requestSizes, candidates, 1.0)
+
     # print the configuration
     print('Packed ' + str(len(requestSizes)) + ' requests into ' + str(len(bins)) + ' bins')
-    print('Total size of packed requests is: ' + str(sum(requestSizes)) + ', total bins size: ' + str(len(bins)*total))
+    print('Total size of packed requests is: ' + str(sum(requestSizes)) +
+          ', total bins size: ' + str(len(bins)*total) + ', optimal lower bound: ' +
+          str(int(math.ceil(sum(requestSizes)/total))))
     print('Dimensions: ' + str(boundaries))
     for i, b in enumerate(bins):
         print('Bin ' + str(i) + ':\n' + str(b))
+
+    # TODO: add unit test to check if request sizes/alpha are respected
+    # (need to match each allocated space with request size)
+
+    # check if bin configuration is possible for all bins
+    if (not all(b.testPossible(boundaries) for b in bins)):
+        print('Not all bin configurations are possible ! Test FAILED')
+
 
 randomRequestsFFD([24, 24, 24])
