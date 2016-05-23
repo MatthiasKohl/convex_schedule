@@ -114,8 +114,7 @@ def metric_diameter(proj, isGrid, dimensions):
     if isGrid:
         return sum(map(lambda x: x - 1, proj))
     else:
-        return sum(map(lambda dim: getattr(proj, dim) // 2 if\
-                       getattr(proj, dim) == dimensions[dim] else getattr(proj, dim) - 1, proj._fields))
+        return sum(d // 2 if s > d // 2 else s - 1 for s, d in zip(proj, dimensions.values()))
 
 # this metric is not diameter / perfect diameter but rather shape / perfect cubic shape
 def metric_compactness(proj, isGrid, dimensions):
