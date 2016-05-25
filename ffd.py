@@ -6,7 +6,7 @@ import operator
 import itertools
 import random
 from functools import reduce
-from shapes import shape_candidates, char_range, metric_compactness
+from shapes import shape_candidates, char_range, metric_compactness, metric_diameter
 
 class ConvexSpace:
     def __init__(self, coordinates, boundaries, tag=0):
@@ -44,32 +44,12 @@ class ConvexSpace:
                 return False
         return True
 
-    # in principle, each dimension can be cut in 2 new ConvexSpaces
-    # this is unless there is no space left at any or both sides of this ConvexSpace
-    def minus(self, other):
-        newSpaces = []
-        for (i, thisCoord), thisD, otherCoord, otherD in zip(enumerate(self.coordinates),
-                                                              self.boundaries, other.coordinates, other.boundaries):
-            if (otherCoord > thisCoord and otherCoord < thisCoord + thisD):
-                newBoundaries = list(self.boundaries)
-                newBoundaries[i] = otherCoord - thisCoord
-                newSpaces.append(ConvexSpace(list(self.coordinates), newBoundaries))
-            if (otherCoord + otherD > thisCoord and otherCoord + otherD < thisCoord + thisD):
-                newCoordinates = list(self.coordinates)
-                newCoordinates[i] = otherCoord + otherD
-                newBoundaries = list(self.boundaries)
-                newBoundaries[i] = (thisCoord + thisD) - (otherCoord + otherD)
-                newSpaces.append(ConvexSpace(newCoordinates, newBoundaries))
-        return newSpaces
-
     def isIntersecting(self, other):
         # check if for all dimensions, one of the other coordinates lies inside our coordinates
         for thisCoord, thisD, otherCoord, otherD in zip(self.coordinates, self.boundaries,
                                                         other.coordinates, other.boundaries):
-            if ((otherCoord + otherD > thisCoord and otherCoord + otherD < thisCoord + thisD)
-                or (otherCoord > thisCoord and otherCoord < thisCoord + thisD)):
-                continue
-            return False
+            if (otherCoord + otherD <= thisCoord or otherCoord >= thisCoord + thisD):
+                return False
         return True
 
     # return intersection between this space and another as
@@ -78,15 +58,12 @@ class ConvexSpace:
         intervals = []
         for thisCoord, thisD, otherCoord, otherD in zip(self.coordinates, self.boundaries,
                                                         other.coordinates, other.boundaries):
-            if (otherCoord + otherD >= thisCoord and otherCoord + otherD <= thisCoord + thisD):
-                newCoord = max(thisCoord, otherCoord)
-                intervals.append((newCoord, otherCoord + otherD - newCoord))
-            elif (otherCoord >= thisCoord and otherCoord <= thisCoord + thisD):
-                newMaxCoord = min(thisCoord + thisD, otherCoord + otherD)
-                intervals.append((otherCoord, newMaxCoord - otherCoord))
-            else:
+            if (otherCoord + otherD < thisCoord or otherCoord > thisCoord + thisD):
                 intervals = []
                 break
+            newCoord = max(thisCoord, otherCoord)
+            newMaxCoord = min(thisCoord + thisD, otherCoord + otherD)
+            intervals.append((newCoord, newMaxCoord - newCoord))
         return intervals
 
     # return the intersection of this space and another as a new space
@@ -96,6 +73,27 @@ class ConvexSpace:
         if (not intervals):
             return ConvexSpace([0 for x in self.coordinates], [0 for x in self.boundaries])
         return ConvexSpace([x[0] for x in intervals], [x[1] for x in intervals])
+
+    # in principle, each dimension can be cut in 2 new ConvexSpaces
+    # this is unless there is no space left at any or both sides of this ConvexSpace
+    # if there is no intersection (or empty intersection), then there are no new spaces
+    def minus(self, other):
+        newSpaces = []
+        intervals = self.intersectionIntervals(other)
+        if (any(s == 0 for c, s in intervals)):
+            return newSpaces
+        for d, interval in enumerate(intervals):
+            if (interval[0] > self.coordinates[d]):
+                newBoundaries = list(self.boundaries)
+                newBoundaries[d] = interval[0] - self.coordinates[d]
+                newSpaces.append(ConvexSpace(list(self.coordinates), newBoundaries))
+            if (interval[0] + interval[1] < self.coordinates[d] + self.boundaries[d]):
+                newCoordinates = list(self.coordinates)
+                newCoordinates[d] = interval[0] + interval[1]
+                newBoundaries = list(self.boundaries)
+                newBoundaries[d] = self.coordinates[d] + self.boundaries[d] - (interval[0] + interval[1])
+                newSpaces.append(ConvexSpace(newCoordinates, newBoundaries))
+        return newSpaces
 
     # try to join two spaces over the i-th dimension
     def join(self, other, i):
@@ -268,7 +266,7 @@ class Bin:
         assignedSpace = ConvexSpace(chosenFSCoords, list(boundariesToFit))
         self.spaces.add(assignedSpace)
 
-        print('Fitted bin is as follows:\n' + str(self))
+        #print('Fitted bin is as follows:\n' + str(self))
         # make sure that the assigned space is subtracted from all existing FSs
         removedFSs = set()
         addedFSs = set()
@@ -280,7 +278,7 @@ class Bin:
         self.freelist.difference_update(removedFSs)
         self.freelist.update(addedFSs)
 
-        print('Fitted bin is as follows:\n' + str(self))
+        #print('Fitted bin is as follows:\n' + str(self))
         # make sure that any adjacent FSs are joined until no adjacent FSs can be joined
         # at most this can happen as much as there are FSs in freelist
         while(True):
@@ -298,7 +296,7 @@ class Bin:
             self.freelist.difference_update(removedFSs)
             self.freelist.update(addedFSs)
 
-        print('Fitted bin is as follows:\n' + str(self))
+        #print('Fitted space ' + str(boundariesToFit) + ' into bin as follows:\n' + str(self))
 
     # simple test to check if a bin configuration is possible according to given boundaries
     # it can be specified that free spaces must not overlap (usually, they can overlap
@@ -390,9 +388,7 @@ def bestMetricsDelta(requestSize, dimensions, shape_candidates, alpha, metric):
         return 0
     return bestMetrics[1] - bestMetrics[0]
 
-def ffdBest(dimensions, requestSizes, shape_candidates, alpha):
-    if (not requestSizes):
-        return []
+def ffdGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alpha):
     # sort the requested sizes by non-increasing size,
     # then by non-increasing delta of best metrics of possible shapes (sort must be stable)
     # TODO sorting request sizes by size is not exactly right as we want to consider the shapes
@@ -400,7 +396,10 @@ def ffdBest(dimensions, requestSizes, shape_candidates, alpha):
     sortedSizes = sorted(sorted(requestSizes, reverse=True), key=lambda r:
                          bestMetricsDelta(r, dimensions, shape_candidates, alpha, metric_compactness),
                          reverse=True)
+    bestMetricShapes = (chooseBestMetricShape(r, dimensions, shape_candidates,
+                                              alpha, metric_compactness) for r in requestSizes)
     bins = []
+    fittedSpaces = []
     total = reduce(operator.mul, dimensions.values(), 1)
     for size in sortedSizes:
         # try to fit the different shapes in an existing bin, sorted by metric (best to worst)
@@ -416,6 +415,7 @@ def ffdBest(dimensions, requestSizes, shape_candidates, alpha):
             for b in bins:
                 if (b.canFit(space)):
                     b.fitBest(space)
+                    fittedSpaces.append(space)
                     fittedBin = b
                     isFit = True
                     break
@@ -425,8 +425,81 @@ def ffdBest(dimensions, requestSizes, shape_candidates, alpha):
             newBin = Bin(dimensions.values())
             # simply choose the best space in this case
             newBin.fitBest(spaces[0])
-            fittedBin = newBin
+            fittedSpaces.append(spaces[0])
             bins.append(newBin)
+            fittedBin = newBin
+        if (not fittedBin.testPossible(True, False)):
+            print('Impossible configuration:\n' + str(fittedBin) + '\n')
+            print('Spaces leading to this: ' + str(fittedSpaces))
+            break
+
+    return bins
+
+def chooseBestMetricShape(requestSize, dimensions, shape_candidates, alpha, metric):
+    total = reduce(operator.mul, dimensions.values(), 1)
+    cutOffSize = min(int(requestSize+requestSize*alpha), total)
+    return min((p for n, projs in shape_candidates.items()
+               if n >= requestSize and n <= cutOffSize
+               for p in projs), key=lambda p: metric(p, False, dimensions))
+
+def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha):
+    # always pick the best metric shape and then pack using that
+    # choose diameter here because bigger shapes should never take precedence
+    bestMetricShapes = (chooseBestMetricShape(r, dimensions, shape_candidates,
+                                              alpha, metric_diameter) for r in requestSizes)
+    bins = []
+    # sort by size
+    for shape in sorted(bestMetricShapes,
+                        key=lambda s: reduce(operator.mul, s, 1), reverse=True):
+        isFit = False
+        for b in bins:
+            if (b.canFit(shape)):
+                b.fitBest(shape)
+                fittedBin = b
+                isFit = True
+                break
+        if (not isFit):
+            newBin = Bin(dimensions.values())
+            newBin.fitBest(shape)
+            bins.append(newBin)
+            fittedBin = newBin
+        if (not fittedBin.testPossible(True, False)):
+            print('Impossible configuration:\n' + str(fittedBin) + '\n')
+            break
+
+    return bins
+
+def ffdBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
+    bins = []
+    total = reduce(operator.mul, dimensions.values(), 1)
+    lastSize = total
+    # sort requests by size
+    for r in sorted(requestSizes, reverse=True):
+        # try any shape which is smaller than last, from best metric to worst
+        cutOffSize = min(int(r+r*alpha), total)
+        # choose diameter as metric because bigger shapes should not get precedence
+        sortedShapes = sorted((p for n, projs in shape_candidates.items()
+                               if n >= r and n <= cutOffSize for p in projs), key=lambda p:
+            metric_diameter(p, False, dimensions))
+        isFit = False
+        for shape in sortedShapes:
+            if (reduce(operator.mul, shape, 1) > lastSize):
+                continue # make sure that this shape is not bigger than last
+            for b in bins:
+                if (b.canFit(shape)):
+                    b.fitBest(shape)
+                    fittedBin, fittedShape = (b, shape)
+                    isFit = True
+                    break
+            if (isFit):
+                break
+        if (not isFit):
+            newBin = Bin(dimensions.values())
+            # take the best metric shape in this case
+            newBin.fitBest(sortedShapes[0])
+            bins.append(newBin)
+            fittedBin, fittedShape = (newBin, sortedShapes[0])
+        lastSize = reduce(operator.mul, fittedShape, 1)
         if (not fittedBin.testPossible(True, False)):
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             break
@@ -449,7 +522,7 @@ def randomRequestsFFD(boundaries):
     # bins = ffdFlat(boundaries, requestSizes, candidates, 1.0)
 
     # get best metric bin packing
-    bins = ffdBest(dimensions, requestSizes, candidates, 1.0)
+    bins = ffdBestMetricAlways(dimensions, requestSizes, candidates, 0.15)
 
     # print the configuration
     print('Packing as follows:')
@@ -459,12 +532,16 @@ def randomRequestsFFD(boundaries):
     unusedSpace = sum(map(lambda b:
                           sum(reduce(operator.mul, s.boundaries, 1) for s in b.freelist), bins[:-1]))
     print('Dimensions: ' + str(boundaries))
+    totalRequestSize = sum(requestSizes)
     print('Packed ' + str(len(requestSizes)) + ' requests into ' + str(len(bins)) + ' bins')
-    print('Total size of packed requests is: ' + str(sum(requestSizes)) +
+    print('Total size of requests is: ' + str(totalRequestSize) +
           ', total bins size: ' + str(len(bins)*total) + ', optimal lower bound (# bins): ' +
-          str(int(math.ceil(sum(requestSizes)/total))))
+          str(int(math.ceil(totalRequestSize/total))))
     unusedPercentage = unusedSpace * 100 / (len(bins) * total)
-    print('Packing unused space: ' + str(unusedSpace) + ' -> ' + str(unusedPercentage) + '%')
+    print('Packing unused space (excluding last bin): ' + str(unusedSpace) + ' -> ' + str(unusedPercentage) + '%')
+    totalUsedSpace = sum(reduce(operator.mul, s.boundaries, 1) for b in bins for s in b.spaces)
+    print('Total used space: ' + str(totalUsedSpace) + ', exceeding ' +
+          str((totalUsedSpace - totalRequestSize) * 100 / totalRequestSize) + '% total requested space')
 
     # TODO: add unit test to check if request sizes/alpha are respected
     # (need to match each allocated space with request size)
