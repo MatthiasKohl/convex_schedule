@@ -46,6 +46,16 @@ class ConvexSpace:
                 newSpaces.append(ConvexSpace(newCoordinates, newBoundaries))
         return newSpaces
 
+    def isIntersecting(self, other):
+        # check if for all dimensions, one of the other coordinates lies inside our coordinates
+        for thisCoord, thisD, otherCoord, otherD in zip(self.coordinates, self.boundaries,
+                                                        other.coordinates, other.boundaries):
+            if ((otherCoord + otherD > thisCoord and otherCoord + otherD < thisCoord + thisD)
+                or (otherCoord > thisCoord and otherCoord < thisCoord + thisD)):
+                continue
+            return False
+        return True
+
     # return intersection between this space and another as
     # a list of intervals in all dimensions or an empty list (if no intersection)
     def intersectionIntervals(self, other):
@@ -227,6 +237,37 @@ class Bin:
         #print('New free spaces: ' + str([str(x) for x in newFreeSpaces]))
         self.freelist.extend(newFreeSpaces)
 
+    # fit the given boundaries at the best location according to caving degree
+    # i.e. always fit at a corner and try to fill all dimensions as much as possible
+    def fitBest(self, boundariesToFit):
+        chosenFS = None
+        chosenFSCoords = None
+        for space in filter(lambda s: s.canFit(boundariesToFit), self.freelist):
+            # TODO
+            chosenFS = space
+            chosenFSCoords = list(space.coordinates)
+        assignedSpace = ConvexSpace(chosenFSCoords, list(boundariesToFit))
+        self.spaces.append(assignedSpace)
+
+        # make sure that the assigned space is subtracted from all existing FS
+        removedFS =[]
+        addedFS = []
+        for space in self.freelist:
+            if (space.isIntersecting(assignedSpace)):
+                removedFS.append(space)
+                addedFS.extend(space.minus(assignedSpace))
+        for space in removedFS:
+            self.freelist.remove(space)
+        self.freelist.extend(addedFS)
+
+        # make sure that any adjacent FS are joined
+        removedFS = []
+        for fs1, fs2 in itertools.combinations(self.freelist, 2):
+            if (s1.joinAdjacent(s2)):
+                removedFS.append(s2)
+        for space in removedFS:
+            self.freelist.remove(space)
+
     # simple test to check if a bin configuration is possible according to given boundaries
     # it can be specified that free spaces must not overlap (usually, they can overlap
     # between each other, not with other spaces)
@@ -239,14 +280,12 @@ class Bin:
         # check that there is no intersection between any two spaces
         overlapSpaces = self.spaces if allowOverlappingFS else allSpaces
         for s1, s2 in itertools.combinations(overlapSpaces, 2):
-            intervals = s1.intersectionIntervals(s2)
-            if (intervals and all(s > 0 for c, s in intervals)):
+            if (s1.isIntersecting(s2)):
                 return False
         # if free spaces can overlap, still need to check that they don't overlap with assigned
         if (allowOverlappingFS):
             for s1, s2 in itertools.product(self.freelist, self.spaces):
-                intervals = s1.intersectionIntervals(s2)
-                if (intervals and all(s > 0 for c, s in intervals)):
+                if (s1.isIntersecting(s2)):
                     return False
         if (not allowAdjFS):
             # there must not be any two adjacent free spaces
