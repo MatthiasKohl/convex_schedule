@@ -6,6 +6,7 @@ from collections import namedtuple
 from functools import reduce
 from subprocess import Popen, PIPE
 from math import isinf
+import itertools
 
 TMP_SHAPES = 'shapes'
 TMP_EXT = '.tmp'
@@ -114,7 +115,32 @@ def metric_diameter(proj, isGrid, dimensions):
     if isGrid:
         return sum(map(lambda x: x - 1, proj))
     else:
-        return sum(d // 2 if s > d // 2 else s - 1 for s, d in zip(proj, dimensions.values()))
+        return sum(min(s-1, d // 2) for s, d in zip(proj, dimensions.values()))
+
+def get_opt_diameter(shape, dimensions):
+    # check if flattening gains us diameter
+    currentDiam = metric_diameter(shape, False, dimensions)
+    for n in range(2, len(dimensions) + 1):
+        for l in itertools.combinations(zip(enumerate(shape), dimensions.values()), n):
+            maximalSizes = sorted((x for x in l), key=lambda x: x[0][1], reverse=True)[:n-1]
+            factor = reduce(operator.mul, [d / s for (i, s), d in maximalSizes], 1)
+            maxIndices = [x[0][0] for x in maximalSizes]
+            restSize = reduce(operator.mul, [s for i, s in enumerate(shape) if not (i in maxIndices)], 1)
+            restSize = restSize / factor
+            newShape = [x[1] for x in maximalSizes]
+            numRestSizes = len(shape) - len(maximalSizes)
+            newShape.extend(restSize ** (1.0 / (numRestSizes)) for i in range(numRestSizes))
+            newDiam = metric_diameter(newShape, False, dimensions)
+            if (newDiam < currentDiam):
+                return get_opt_diameter(newShape, dimensions)
+    return currentDiam
+
+def opt_diameter(size, isGrid, dimensions):
+    optSide = size ** (1.0/len(dimensions))
+    if isGrid:
+        return len(dimensions) * (optSide - 1)
+    else:
+        return get_opt_diameter([optSide for i in dimensions], dimensions)
 
 # this metric is not diameter / perfect diameter but rather shape / perfect cubic shape
 def metric_compactness(proj, isGrid, dimensions):

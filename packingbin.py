@@ -1,6 +1,26 @@
 from packingspace import ConvexSpace
 import itertools
 
+# choose the best join for a flat fit
+# simply try all possible joins and choose the one which leaves the biggest sizes
+# according to reverse order dimensions, this is the biggest space in the order of
+# dimensions
+# returns the list of joined spaces
+def chooseBestJoinFlat(space1, space2):
+    joinedSpaces = []
+    biggestSizes = max(tuple(reversed(s.boundaries)) for s in [space1, space2])
+    for d in range(len(space1.boundaries)):
+        spaces = space1.join(space2, d)
+        if (not spaces):
+            continue
+        maxSize = max(tuple(reversed(s.boundaries)) for s in spaces)
+        if (maxSize >= biggestSizes):
+            # if a the biggest joined space has the same size than another, take it
+            # (since the other could be the initial which should always be overridden if possible)
+            biggestSizes = maxSize
+            joinedSpaces = spaces
+    return joinedSpaces
+
 class Bin:
     def __init__(self, boundaries):
         self.boundaries = boundaries
@@ -9,26 +29,6 @@ class Bin:
 
     def canFit(self, boundariesToFit):
         return any(space.canFit(boundariesToFit) for space in self.freelist)
-
-    # choose the best join for a flat fit
-    # simply try all possible joins and choose the one which leaves the biggest sizes
-    # according to reverse order dimensions, this is the biggest space in the order of
-    # dimensions
-    # returns the list of joined spaces
-    def chooseBestJoinFlat(space1, space2):
-        joinedSpaces = []
-        biggestSizes = max(tuple(reversed(s.boundaries)) for s in [space1, space2])
-        for d in range(len(space1.boundaries)):
-            spaces = space1.join(space2, d)
-            if (not spaces):
-                continue
-            maxSize = max(tuple(reversed(s.boundaries)) for s in spaces)
-            if (maxSize >= biggestSizes):
-                # if a the biggest joined space has the same size than another, take it
-                # (since the other could be the initial which should always be overridden if possible)
-                biggestSizes = maxSize
-                joinedSpaces = spaces
-        return joinedSpaces
 
     # fit the given boundaries in this bin over the i-th dimension (boundariesToFit should
     # be flat up to that dimension), then leave the biggest possible spaces in the order
@@ -57,7 +57,7 @@ class Bin:
                                                           key=lambda s: tuple(reversed(s.boundaries)),
                                                           reverse = True), 2):
                 #print('Trying to join ' + str(fs1) + ' and ' + str(fs2))
-                joinedSpaces = Bin.chooseBestJoinFlat(fs1, fs2)
+                joinedSpaces = chooseBestJoinFlat(fs1, fs2)
                 if (joinedSpaces):
                     #print('Joined spaces: ' + str([str(x) for x in joinedSpaces]))
                     newFreeSpaces.difference_update({fs1, fs2})

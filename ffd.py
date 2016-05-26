@@ -8,7 +8,8 @@ import random
 import numpy as np
 import uuid
 from functools import reduce
-from shapes import shape_candidates, char_range, metric_compactness, metric_diameter
+from shapes import shape_candidates, char_range
+from shapes import metric_compactness, metric_diameter, opt_diameter
 from packingbin import Bin
 
 def chooseCandidateFlat(requestSize, total, shape_candidates, alpha):
@@ -17,18 +18,24 @@ def chooseCandidateFlat(requestSize, total, shape_candidates, alpha):
     # this is the candidate that leaves the biggest convex free space when fit into the bin,
     # according to the heuristic
     cutOffSize = min(int(requestSize+requestSize*alpha), total)
-    return min([p for n, projs in shape_candidates.items()
-               if n >= requestSize and n <= cutOffSize for p in projs])
+    considered = [p for n, projs in shape_candidates.items()
+               if n >= requestSize and n <= cutOffSize for p in projs]
+    if (not considered):
+        return requestSize
+    return list(min(considered)) # return projection as list of values
 
-def ffdFlat(boundaries, requestSizes, shape_candidates, alpha):
-    total = reduce(operator.mul, boundaries, 1)
+def ffdFlat(dimensions, requestSizes, shape_candidates, alpha):
+    total = reduce(operator.mul, dimensions.values(), 1)
     # always choose the flattest (and smallest) shape for each request size
     listOfRequestSpaces = map(lambda r:
                               chooseCandidateFlat(r, total, shape_candidates, alpha), requestSizes)
-    if (not listOfRequestSpaces): return []
     bins = []
     # sort requested shapes by size and do a first-fit over the bins
-    for space in sorted(listOfRequestSpaces, reverse=True):
+    for space in sorted(listOfRequestSpaces, reverse=True,
+                        key=lambda p: p if isinstance(p, list) else [0 for d in dimensions]):
+        if (not isinstance(space, list)):
+            print('Cannot allocate size ' + str(space) + ' since no shapes are available')
+            continue
         # get index of last flat dimension, this is the dimension over which the space needs
         # to be fitted into its bin
         firstNonFlatD = next( (i for i, d in enumerate(space) if d > 1), len(space)-1)
@@ -40,7 +47,7 @@ def ffdFlat(boundaries, requestSizes, shape_candidates, alpha):
                 isFit = True
                 break
         if (not isFit):
-            newBin = Bin(boundaries)
+            newBin = Bin(dimensions.values())
             newBin.fitFlat(space, firstNonFlatD)
             fittedBin = newBin
             bins.append(newBin)
@@ -118,7 +125,6 @@ def chooseBestMetricShapes(requestSize, dimensions, shape_candidates, alpha, met
     considered = [p for n, projs in shape_candidates.items()
                if n >= requestSize and n <= cutOffSize for p in projs]
     if (not considered):
-        print('Cannot allocate ' + str(requestSize) + ' since no shapes are available')
         return []
     minMetric = min(metric(p, False, dimensions) for p in considered)
     # get min metric shapes, sorted by non-decreasing size
@@ -126,18 +132,16 @@ def chooseBestMetricShapes(requestSize, dimensions, shape_candidates, alpha, met
                key=lambda p: reduce(operator.mul, p, 1))
 
 def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha):
-    # always pick the best metric shape and then pack using that
-    # choose diameter here because bigger shapes should never take precedence
-    bestMetricShapes = (chooseBestMetricShape(r, dimensions, shape_candidates,
-                                              alpha, metric_diameter) for r in requestSizes)
+    # always pick the best metric shapes and then pack using that
+    # if we choose diameter as metric, the best metric of r1 cannot have greater size
+    # than the best metric of r2 if r1 < r2, since there cannot be two shapes of different sizes
+    # having the best diameter for the requests
     bins = []
     for r in sorted(requestSizes, reverse=True):
         isFit = False
-        # to be in non-decreasing order, this assumes that if r1 is of smaller size than r2,
-        # then the best metric shapes of r1 are always of smaller size than the best metric
-        # shapes of r2. this is the case with diameter
         bestMetricShapes = chooseBestMetricShapes(r, dimensions, shape_candidates, alpha, metric_diameter)
         if (not bestMetricShapes):
+            print('Cannot allocate ' + str(r) + ' since no shapes are available')
             continue
         for shape in bestMetricShapes:
             for b in bins:
@@ -208,7 +212,7 @@ def chooseBestShapes(requestSize, dimensions, shape_candidates, alpha, metric):
            if n >= requestSize and n <= cutOffSize for p in projs], key=lambda p:
             metric(p, False, dimensions))
     if (not bestMetricShapes):
-        print('Cannot allocated ' + str(requestSize) + ' since no shapes are available')
+        print('Cannot allocate ' + str(requestSize) + ' since no shapes are available')
         return iter([])
     bestMetricSize = reduce(operator.mul, bestMetricShapes[0], 1)
     # associate an ID with each shape for a given request size so that it can be removed
@@ -248,7 +252,24 @@ def ffdAllBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
 
     return bins
 
-def randomRequestsFFD(boundaries):
+def printResults(boundaries, results):
+    print('Dimensions: ' + str(boundaries))
+    print('Packed ' + str(results[1]) + ' requests into ' + str(results[2]) + ' bins')
+    print('Total size of requests is: ' + str(results[0]) +
+          ', total bins size: ' + str(results[2]*reduce(operator.mul, boundaries, 1)) +
+          ', optimal lower bound (# bins): ' + str(results[3]))
+    print('Packing unused space (excluding last bin): ' + str(results[4]) + ' -> ' +
+          str(results[5]) + '%')
+
+    print('Total used space: ' + str(results[6]) + ', exceeding ' +
+          str(results[7]) + '% total requested space')
+
+    print('Total convex space in bins: ' + str(results[8]) + ', exceeding ' +
+          str(results[9]) + '% total requested space')
+    print('Total average diameter: ' + str(results[10]) + ', total optimal average diameter: ' +
+          str(results[11]))
+
+def randomRequestsFFD(boundaries, strategy, alpha, printDetail = False):
     # get shape candidates
     dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
     candidates = shape_candidates("./primes", False, dimensions)
@@ -262,48 +283,70 @@ def randomRequestsFFD(boundaries):
     np.random.normal(0.5, 0.5, random.randint(100, 1000)) if x >= 0 and x <= 8]
 
     # get flat bin packing
-    # bins = ffdFlat(boundaries, requestSizes, candidates, 1.0)
+    bins = strategy(dimensions, requestSizes, candidates, alpha)
 
-    # get best metric bin packing
-    bins = ffdAllBestMetricFirst(dimensions, requestSizes, candidates, 0.15)
+    totalRequestSize = sum(requestSizes)
+    nRequests = len(requestSizes)
+    nBins = len(bins)
+    nOptBins = int(math.ceil(totalRequestSize/total))
 
-    # print the configuration
-    print('Packing as follows:')
-    for i, b in enumerate(bins):
-        print('Bin ' + str(i) + ':\n' + str(b))
     # unused space excludes the last bin's free space as it might still be filled
     unusedSpace = sum(map(lambda b:
                           sum(reduce(operator.mul, s.boundaries, 1) for s in b.freelist), bins[:-1]))
-    print('Dimensions: ' + str(boundaries))
-    totalRequestSize = sum(requestSizes)
-    print('Packed ' + str(len(requestSizes)) + ' requests into ' + str(len(bins)) + ' bins')
-    print('Total size of requests is: ' + str(totalRequestSize) +
-          ', total bins size: ' + str(len(bins)*total) + ', optimal lower bound (# bins): ' +
-          str(int(math.ceil(totalRequestSize/total))))
     unusedPercentage = unusedSpace * 100 / (len(bins) * total)
-    print('Packing unused space (excluding last bin): ' + str(unusedSpace) + ' -> ' + str(unusedPercentage) + '%')
+
     totalUsedSpace = sum(reduce(operator.mul, s.boundaries, 1) for b in bins for s in b.spaces)
-    print('Total used space: ' + str(totalUsedSpace) + ', exceeding ' +
-          str((totalUsedSpace - totalRequestSize) * 100 / totalRequestSize) + '% total requested space')
+    totalUsedExceedingPercentage = (totalUsedSpace - totalRequestSize) * 100 / totalRequestSize
+
     def convexUsedSpace(b):
-        # return space used by a convex mesh around all assigned spaces in bin b
-        # get max coordinate in each dimension
-        return reduce(operator.mul,
-                      [max(s.coordinates[d] + s.boundaries[d] for s in b.spaces)
-                      for d in range(len(b.boundaries))], 1)
+            # return space used by a convex mesh around all assigned spaces in bin b
+            # get max coordinate in each dimension
+            return reduce(operator.mul,
+                          [max(s.coordinates[d] + s.boundaries[d] for s in b.spaces)
+                          for d in range(len(b.boundaries))], 1)
     totalSubMeshSpace = sum(convexUsedSpace(b) for b in bins)
-    print('Total convex space in bins: ' + str(totalSubMeshSpace) + ', exceeding ' +
-          str((totalSubMeshSpace - totalRequestSize) * 100 / totalRequestSize) + '% total requested space')
-    for name, m in [('diameter', metric_diameter), ('compactness', metric_compactness)]:
-        avgMetric = sum(m(p.boundaries, False, dimensions) for b in bins for p in b.spaces)
-        avgMetric = avgMetric / len(requestSizes)
-        print('Total average ' + name + ' is: ' + str(avgMetric))
+    totalSubMeshExceedingPercentage = (totalSubMeshSpace - totalRequestSize) * 100 / totalRequestSize
+
+    averageDiameter = sum(metric_diameter(p.boundaries, False, dimensions) for b in bins
+                          for p in b.spaces) / len(requestSizes)
+    averageOptDiameter = sum(opt_diameter(r, False, dimensions)
+                             for r in requestSizes) / len(requestSizes)
+
+    results = [totalRequestSize, nRequests, nBins, nOptBins, unusedSpace, unusedPercentage,
+    totalUsedSpace, totalUsedExceedingPercentage, totalSubMeshSpace,
+    totalSubMeshExceedingPercentage, averageDiameter, averageOptDiameter]
+
+    if (printDetail):
+        # print the configuration
+        print('Packing as follows:')
+        for i, b in enumerate(bins):
+            print('Bin ' + str(i) + ':\n' + str(b))
+
+        printResults(boundaries, results)
 
     # TODO: add unit test to check if request sizes/alpha are respected
     # (need to match each allocated space with request size)
 
     # check if bin configuration is possible for all bins
-    if (not all(b.testPossible(True, False) for b in bins)):
+    if ((strategy is ffdFlat and not all(b.testPossible(False, True) for b in bins)) or
+        not (strategy is ffdFlat) and not all(b.testPossible(True, False) for b in bins)):
         print('Not all bin configurations are possible ! Test FAILED')
 
-randomRequestsFFD([24, 24, 24])
+    return results
+
+def testStrategies(boundaries):
+    # test each strategy 10 times and take average measures
+    for name, strategy in [('flat', ffdFlat), ('best-always', ffdBestMetricAlways),
+    ('greatest-metric-delta', ffdGreatestMetricDeltaFirst),
+    ('best-metric-first', ffdEachBestMetricFirst), ('all-best-metric-first', ffdAllBestMetricFirst)]:
+        for alpha in [0.15, 1.0]:
+            results = []
+            for i in range(10):
+                results.append(randomRequestsFFD(boundaries, strategy, alpha))
+            npResults = np.array(results)
+            avgResults = np.mean(npResults, axis=0)
+            print('Average results for strategy ' + name + ' and alpha ' + str(alpha))
+            printResults(boundaries, avgResults)
+            print('\n')
+
+testStrategies([24, 24, 24])
