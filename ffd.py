@@ -5,6 +5,7 @@ import math
 import operator
 import itertools
 import random
+import uuid
 from functools import reduce
 from shapes import shape_candidates, char_range, metric_compactness, metric_diameter
 
@@ -199,34 +200,6 @@ class Bin:
         self.freelist.remove(freeSpace)
         newFreeSpaces = set(freeSpace.minus(assignedSpace))
 
-        # TODO this doesn't work. need to come up with a better idea of how to join
-        # multiple spaces together (for example, for every pair, choose the dimension which
-        # gives the biggest sizes according to reverse order of dimensions)
-        # while it's possible to join any pair of new free spaces, replace the pair with
-        # the joined spaces. join over all dimensions except first one (never needed)
-        # and in reverse order
-        # tryToJoin = len(newFreeSpaces) >= 2
-        # while (tryToJoin):
-        #     for d in reversed(range(1, len(boundariesToFit))):
-        #         tryToJoin = False
-        #         for idx1 in range(len(newFreeSpaces)):
-        #             for idx2 in range(idx1 + 1, len(newFreeSpaces)):
-        #                 fs1 = newFreeSpaces[idx1]
-        #                 fs2 = newFreeSpaces[idx2]
-        #                 print('Trying to join ' + str(fs1) + ' and ' + str(fs2) + ' over dimension ' + str(d))
-        #                 joinedSpaces = fs1.join(fs2, d)
-        #                 if (joinedSpaces):
-        #                     print('Joined spaces: ' + str([str(x) for x in joinedSpaces]))
-        #                     newFreeSpaces.remove(fs1)
-        #                     newFreeSpaces.remove(fs2)
-        #                     newFreeSpaces.extend(joinedSpaces)
-        #                     tryToJoin = True
-        #                     break
-        #             if (tryToJoin):
-        #                 break
-        #         if (tryToJoin):
-        #             break # start over with first dimension
-
         # join each pair of spaces together (according to best flat join)
         # until there is no update anymore (no pair of spaces could be joined)
         # TODO: this is not an efficient way of doing it since when a given space cannot
@@ -244,7 +217,7 @@ class Bin:
                 if (joinedSpaces):
                     #print('Joined spaces: ' + str([str(x) for x in joinedSpaces]))
                     newFreeSpaces.difference_update({fs1, fs2})
-                    newFreeSpaces.update(set(joinedSpaces))
+                    newFreeSpaces.update(joinedSpaces)
                     isUpdated = True
                     break
 
@@ -273,8 +246,7 @@ class Bin:
         for space in self.freelist:
             if (space.isIntersecting(assignedSpace)):
                 removedFSs.add(space)
-                for s in space.minus(assignedSpace):
-                    addedFSs.add(s)
+                addedFSs.update(space.minus(assignedSpace))
         self.freelist.difference_update(removedFSs)
         self.freelist.update(addedFSs)
 
@@ -288,8 +260,7 @@ class Bin:
             for fs1, fs2 in itertools.combinations(self.freelist, 2):
                 joinedSpace = fs1.joinAdjacent(fs2)
                 if (joinedSpace != None):
-                    removedFSs.add(fs1)
-                    removedFSs.add(fs2)
+                    removedFSs.update({fs1, fs2})
                     addedFSs.add(joinedSpace)
             if (not removedFSs and not addedFSs):
                 break
@@ -394,10 +365,10 @@ def ffdGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alph
     # TODO sorting request sizes by size is not exactly right as we want to consider the shapes
     # by non-increasing size. this still needs to be fixed
     sortedSizes = sorted(sorted(requestSizes, reverse=True), key=lambda r:
-                         bestMetricsDelta(r, dimensions, shape_candidates, alpha, metric_compactness),
+                         bestMetricsDelta(r, dimensions, shape_candidates, alpha, metric_diameter),
                          reverse=True)
     bestMetricShapes = (chooseBestMetricShape(r, dimensions, shape_candidates,
-                                              alpha, metric_compactness) for r in requestSizes)
+                                              alpha, metric_diameter) for r in requestSizes)
     bins = []
     fittedSpaces = []
     total = reduce(operator.mul, dimensions.values(), 1)
@@ -407,7 +378,7 @@ def ffdGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alph
         cutOffSize = min(int(size+size*alpha), total)
         spaces = sorted([p for n, projs in shape_candidates.items()
                         if n >= size and n <= cutOffSize for p in projs], key=lambda p:
-                            metric_compactness(p, False, dimensions))
+                            metric_diameter(p, False, dimensions))
         if (not spaces):
             print('Cannot allocate size ' + str(size) + ' since no shapes are available')
             continue # ignore request sizes that cannot be placed
@@ -469,7 +440,7 @@ def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha):
 
     return bins
 
-def ffdBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
+def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
     bins = []
     total = reduce(operator.mul, dimensions.values(), 1)
     lastSize = total
@@ -506,6 +477,50 @@ def ffdBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
 
     return bins
 
+def chooseBestShapes(requestSize, dimensions, shape_candidates, alpha, metric):
+    total = reduce(operator.mul, dimensions.values(), 1)
+    cutOffSize = min(int(requestSize+requestSize*alpha), total)
+    bestMetricShapes = sorted([p for n, projs in shape_candidates.items()
+           if n >= requestSize and n <= cutOffSize for p in projs], key=lambda p:
+            metric(p, False, dimensions))
+    bestMetricSize = reduce(operator.mul, bestMetricShapes[0], 1)
+    # associate an ID with each shape for a given request size so that it can be removed
+    # accordingly when all shapes are considered
+    id = uuid.uuid4()
+    return ((id, p) for p in
+            filter(lambda p: reduce(operator.mul, p, 1) <= bestMetricSize, bestMetricShapes))
+
+def ffdAllBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
+    bins = []
+    total = reduce(operator.mul, dimensions.values(), 1)
+    consideredIds = set()
+    # get all best shapes, then sort all of them by non-increasing size. since sort is stable,
+    # the shapes are still in the right order of metric
+    for id, shape in sorted(((id, p) for l in map(lambda r:
+        chooseBestShapes(r, dimensions, shape_candidates, alpha, metric_diameter),
+        requestSizes) for id, p in l), reverse=True, key=lambda x: reduce(operator.mul, x[1], 1)):
+        if (id in consideredIds):
+            continue
+        # try to fit the shape
+        isFit = False
+        for b in bins:
+            if (b.canFit(shape)):
+                b.fitBest(shape)
+                fittedBin = b
+                isFit = True
+                break
+        if (not isFit):
+            newBin = Bin(dimensions.values())
+            newBin.fitBest(shape)
+            bins.append(newBin)
+            fittedBin = newBin
+        consideredIds.add(id)
+        if (not fittedBin.testPossible(True, False)):
+            print('Impossible configuration:\n' + str(fittedBin) + '\n')
+            break
+
+    return bins
+
 def randomRequestsFFD(boundaries):
     # get shape candidates
     dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
@@ -522,7 +537,7 @@ def randomRequestsFFD(boundaries):
     # bins = ffdFlat(boundaries, requestSizes, candidates, 1.0)
 
     # get best metric bin packing
-    bins = ffdBestMetricAlways(dimensions, requestSizes, candidates, 0.15)
+    bins = ffdGreatestMetricDeltaFirst(dimensions, requestSizes, candidates, 0.15)
 
     # print the configuration
     print('Packing as follows:')
@@ -542,6 +557,19 @@ def randomRequestsFFD(boundaries):
     totalUsedSpace = sum(reduce(operator.mul, s.boundaries, 1) for b in bins for s in b.spaces)
     print('Total used space: ' + str(totalUsedSpace) + ', exceeding ' +
           str((totalUsedSpace - totalRequestSize) * 100 / totalRequestSize) + '% total requested space')
+    def convexUsedSpace(b):
+        # return space used by a convex mesh around all assigned spaces in bin b
+        # get max coordinate in each dimension
+        return reduce(operator.mul,
+                      [max(s.coordinates[d] + s.boundaries[d] for s in b.spaces)
+                      for d in range(len(b.boundaries))], 1)
+    totalSubMeshSpace = sum(convexUsedSpace(b) for b in bins)
+    print('Total convex space in bins: ' + str(totalSubMeshSpace) + ', exceeding ' +
+          str((totalSubMeshSpace - totalRequestSize) * 100 / totalRequestSize) + '% total requested space')
+    for name, m in [('diameter', metric_diameter), ('compactness', metric_compactness)]:
+        avgMetric = sum(m(p.boundaries, False, dimensions) for b in bins for p in b.spaces)
+        avgMetric = avgMetric / len(requestSizes)
+        print('Total average ' + name + ' is: ' + str(avgMetric))
 
     # TODO: add unit test to check if request sizes/alpha are respected
     # (need to match each allocated space with request size)
