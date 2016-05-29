@@ -23,8 +23,8 @@ def chooseBestJoinFlat(space1, space2):
 
 class Bin:
     def __init__(self, boundaries):
-        self.boundaries = boundaries
-        self.freelist = set([ConvexSpace([0 for d in boundaries], list(boundaries))])
+        self.boundaries = list(boundaries)
+        self.freelist = set([ConvexSpace([0 for d in boundaries], list(boundaries), self.boundaries)])
         self.spaces = set()
 
     def canFit(self, boundariesToFit):
@@ -38,7 +38,7 @@ class Bin:
     def fitFlat(self, boundariesToFit, i):
         freeSpace = min(filter(lambda s: s.canFit(boundariesToFit), self.freelist),
                     key=lambda s: [x for d, x in enumerate(s.coordinates) if d != i] + [s.coordinates[i]])
-        assignedSpace = ConvexSpace(list(freeSpace.coordinates), list(boundariesToFit))
+        assignedSpace = ConvexSpace(list(freeSpace.coordinates), list(boundariesToFit), self.boundaries)
         #print('Fitting ' + str(boundariesToFit) + ' into ' + str(freeSpace))
         self.spaces.add(assignedSpace)
         self.freelist.remove(freeSpace)
@@ -80,7 +80,7 @@ class Bin:
         # TODO coordinates could be adapted depending on other free spaces
         # in order to leave more or less convex free space open
         chosenFSCoords = list(chosenFS.coordinates)
-        assignedSpace = ConvexSpace(chosenFSCoords, list(boundariesToFit))
+        assignedSpace = ConvexSpace(chosenFSCoords, list(boundariesToFit), self.boundaries)
         self.spaces.add(assignedSpace)
 
         #print('Fitted bin is as follows:\n' + str(self))
@@ -119,7 +119,7 @@ class Bin:
     def testPossible(self, allowOverlappingFS = True, allowAdjFS = True):
         # check that no space goes outside of given boundaries
         allSpaces = list(self.freelist) + list(self.spaces)
-        boundarySpace = ConvexSpace([0 for x in self.boundaries], self.boundaries)
+        boundarySpace = ConvexSpace([0 for x in self.boundaries], self.boundaries, self.boundaries)
         if (not all(boundarySpace.contains(s) for s in allSpaces)):
             print('Space ' + str([boundarySpace.contains(s) for s in allSpaces][0]) + ' is out of bounds')
             return False

@@ -172,7 +172,7 @@ class ConvexSpace:
         if (any([d != i and s == 0 for d, (c, s) in enumerate(intervals)])):
             return []
 
-        joinedSpace = getJoinedSpace(self, other, i, intervals)
+        joinedSpace = self.getJoinedSpace(other, i, intervals)
         # subtract the intersection from the original spaces and return all resulting spaces
         # which are not contained in the joined space already
         return [s for s in [joinedSpace] + self.minus(self.intersection(joinedSpace)) +
@@ -197,7 +197,7 @@ class ConvexSpace:
                 if (i >= 0):
                     return None
                 i = d
-        return getJoinedSpace(self, other, i, intervals)
+        return self.getJoinedSpace(other, i, intervals)
 
     def __str__(self):
         return str(self.coordinates) + ' -> ' + str(self.boundaries)

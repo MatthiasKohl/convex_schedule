@@ -349,4 +349,5 @@ def testStrategies(boundaries):
             printResults(boundaries, avgResults)
             print('\n')
 
-testStrategies([24, 24, 24])
+# TODO fix bugs here
+randomRequestsFFD([24, 24, 24], ffdFlat, 1.0, True)
