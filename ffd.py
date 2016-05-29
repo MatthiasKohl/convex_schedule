@@ -340,6 +340,7 @@ def testStrategies(boundaries):
     ('greatest-metric-delta', ffdGreatestMetricDeltaFirst),
     ('best-metric-first', ffdEachBestMetricFirst), ('all-best-metric-first', ffdAllBestMetricFirst)]:
         for alpha in [0.15, 1.0]:
+            print('Testing strategy ' + name + ' with alpha ' + str(alpha))
             results = []
             for i in range(10):
                 results.append(randomRequestsFFD(boundaries, strategy, alpha))
@@ -349,5 +350,7 @@ def testStrategies(boundaries):
             printResults(boundaries, avgResults)
             print('\n')
 
-# TODO fix bugs here
-randomRequestsFFD([24, 24, 24], ffdFlat, 1.0, True)
+# TODO fix bugs here, there might be an issue with the flat strategy not getting flat
+# blocks, but this didn't occur before with alpha=0.15
+randomRequestsFFD([24, 24, 24], ffdFlat, 0.15, True)
+#testStrategies([24, 24, 24])

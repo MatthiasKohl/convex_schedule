@@ -42,6 +42,7 @@ class Bin:
         #print('Fitting ' + str(boundariesToFit) + ' into ' + str(freeSpace))
         self.spaces.add(assignedSpace)
         self.freelist.remove(freeSpace)
+        #print('Free space: ' + str(freeSpace) + ' minus assigned ' + str(assignedSpace) + ': ' + str([str(x) for x in freeSpace.minus(assignedSpace)]))
         newFreeSpaces = set(freeSpace.minus(assignedSpace))
 
         # join each pair of spaces together (according to best flat join)

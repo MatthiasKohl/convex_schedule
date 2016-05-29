@@ -83,7 +83,7 @@ class ConvexSpace:
             if (otherCAligned > thisB):
                 newSize = min((otherCAligned + otherB) % coordB, thisB)
             elif (thisB < coordB):
-                newSize = thisB - otherCAligned
+                newSize = min(otherB, thisB - otherCAligned)
             else:
                 newSize = otherB
             intervals.append((newCoord, newSize))
