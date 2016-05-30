@@ -24,7 +24,8 @@ def chooseBestJoinFlat(space1, space2):
 class Bin:
     def __init__(self, boundaries):
         self.boundaries = list(boundaries)
-        self.freelist = set([ConvexSpace([0 for d in boundaries], list(boundaries), self.boundaries)])
+        self.freelist = set([ConvexSpace([0 for b in boundaries], list(boundaries),
+                                         self.boundaries)])
         self.spaces = set()
 
     def canFit(self, boundariesToFit):
@@ -36,14 +37,16 @@ class Bin:
     # (free spaces are sorted over all other dimensions first, then i-th dimension)
     # this assumes that canFit was called before
     def fitFlat(self, boundariesToFit, i):
-        freeSpace = min(filter(lambda s: s.canFit(boundariesToFit), self.freelist),
-                    key=lambda s: [x for d, x in enumerate(s.coordinates) if d != i] + [s.coordinates[i]])
-        assignedSpace = ConvexSpace(list(freeSpace.coordinates), list(boundariesToFit), self.boundaries)
-        #print('Fitting ' + str(boundariesToFit) + ' into ' + str(freeSpace))
-        self.spaces.add(assignedSpace)
-        self.freelist.remove(freeSpace)
-        #print('Free space: ' + str(freeSpace) + ' minus assigned ' + str(assignedSpace) + ': ' + str([str(x) for x in freeSpace.minus(assignedSpace)]))
-        newFreeSpaces = set(freeSpace.minus(assignedSpace))
+        FS = min(filter(lambda s: s.canFit(boundariesToFit), self.freelist),
+                    key=lambda s:
+                    [x for d, x in enumerate(s.coordinates) if d != i] + [s.coordinates[i]])
+        AS = ConvexSpace(list(FS.coordinates), list(boundariesToFit), self.boundaries)
+        #print('Fitting ' + str(boundariesToFit) + ' into ' + str(FS))
+        self.spaces.add(AS)
+        self.freelist.remove(FS)
+        # print('Free space: ' + str(FS) + ' minus assigned ' + str(AS) +
+        #       ': ' + str([str(x) for x in FS.minus(AS)]))
+        newFreeSpaces = set(FS.minus(AS))
 
         # join each pair of spaces together (according to best flat join)
         # until there is no update anymore (no pair of spaces could be joined)
@@ -77,21 +80,22 @@ class Bin:
         # then take the minimum over that list (i.e. the space that has min minimal gap,
         # min 2nd minimal gap...)
         chosenFS = min(filter(lambda s: s.canFit(boundariesToFit), self.freelist),
-                       key = lambda s: sorted([b - boundariesToFit[d] for d, b in enumerate(s.boundaries)]))
+                       key = lambda s:
+                       sorted([b - boundariesToFit[d] for d, b in enumerate(s.boundaries)]))
         # TODO coordinates could be adapted depending on other free spaces
         # in order to leave more or less convex free space open
         chosenFSCoords = list(chosenFS.coordinates)
-        assignedSpace = ConvexSpace(chosenFSCoords, list(boundariesToFit), self.boundaries)
-        self.spaces.add(assignedSpace)
+        AS = ConvexSpace(chosenFSCoords, list(boundariesToFit), self.boundaries)
+        self.spaces.add(AS)
 
         #print('Fitted bin is as follows:\n' + str(self))
         # make sure that the assigned space is subtracted from all existing FSs
         removedFSs = set()
         addedFSs = set()
         for space in self.freelist:
-            if (space.isIntersecting(assignedSpace)):
+            if (space.isIntersecting(AS)):
                 removedFSs.add(space)
-                addedFSs.update(space.minus(assignedSpace))
+                addedFSs.update(space.minus(AS))
         self.freelist.difference_update(removedFSs)
         self.freelist.update(addedFSs)
 
@@ -120,9 +124,10 @@ class Bin:
     def testPossible(self, allowOverlappingFS = True, allowAdjFS = True):
         # check that no space goes outside of given boundaries
         allSpaces = list(self.freelist) + list(self.spaces)
-        boundarySpace = ConvexSpace([0 for x in self.boundaries], self.boundaries, self.boundaries)
-        if (not all(boundarySpace.contains(s) for s in allSpaces)):
-            print('Space ' + str([boundarySpace.contains(s) for s in allSpaces][0]) + ' is out of bounds')
+        BS = ConvexSpace([0 for x in self.boundaries], self.boundaries, self.boundaries)
+        if (not all(BS.contains(s) for s in allSpaces)):
+            print('Space ' + str([s for s in allSpaces if not BS.contains(s)][0]) +
+                  ' is out of bounds')
             return False
         # check that there is no intersection between any two spaces
         overlapSpaces = list(self.spaces) if allowOverlappingFS else allSpaces

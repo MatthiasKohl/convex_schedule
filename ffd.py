@@ -300,10 +300,11 @@ def randomRequestsFFD(boundaries, strategy, alpha, printDetail = False):
 
     def convexUsedSpace(b):
             # return space used by a convex mesh around all assigned spaces in bin b
-            # get max coordinate in each dimension
+            # get max coordinate in each dimension (assumes that spaces are packed from
+            # min to max coordinate which is the case in all strategies)
             return reduce(operator.mul,
-                          [max(s.coordinates[d] + s.boundaries[d] for s in b.spaces)
-                          for d in range(len(b.boundaries))], 1)
+                          [max(min(s.coordinates[d] + s.boundaries[d], s.coordBoundaries[d])
+                               for s in b.spaces) for d in range(len(b.boundaries))], 1)
     totalSubMeshSpace = sum(convexUsedSpace(b) for b in bins)
     totalSubMeshExceedingPercentage = (totalSubMeshSpace - totalRequestSize) * 100 / totalRequestSize
 
@@ -336,9 +337,11 @@ def randomRequestsFFD(boundaries, strategy, alpha, printDetail = False):
 
 def testStrategies(boundaries):
     # test each strategy 10 times and take average measures
-    for name, strategy in [('flat', ffdFlat), ('best-always', ffdBestMetricAlways),
+    strategies = [('flat', ffdFlat), ('best-always', ffdBestMetricAlways),
     ('greatest-metric-delta', ffdGreatestMetricDeltaFirst),
-    ('best-metric-first', ffdEachBestMetricFirst), ('all-best-metric-first', ffdAllBestMetricFirst)]:
+    ('best-metric-first', ffdEachBestMetricFirst), ('all-best-metric-first', ffdAllBestMetricFirst)]
+    strategies = [('all-best-metric-first', ffdAllBestMetricFirst)]
+    for name, strategy in strategies:
         for alpha in [0.15, 1.0]:
             print('Testing strategy ' + name + ' with alpha ' + str(alpha))
             results = []
@@ -350,7 +353,5 @@ def testStrategies(boundaries):
             printResults(boundaries, avgResults)
             print('\n')
 
-# TODO fix bugs here, there might be an issue with the flat strategy not getting flat
-# blocks, but this didn't occur before with alpha=0.15
-randomRequestsFFD([24, 24, 24], ffdFlat, 0.15, True)
-#testStrategies([24, 24, 24])
+#randomRequestsFFD([24, 24, 24], ffdFlat, 0.15, True)
+testStrategies([24, 24, 24])

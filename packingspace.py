@@ -1,5 +1,7 @@
 # return whether or not the interval contains the other interval according to bounds
 def intervalContains(thisC, thisB, otherC, otherB, coordB, isStrict = False):
+    if (thisB >= coordB):
+        return True
     otherCAligned = otherC - thisC if otherC >= thisC else otherC + coordB - thisC
     if (isStrict):
         return otherCAligned != 0 and otherCAligned + otherB < thisB
@@ -8,13 +10,13 @@ def intervalContains(thisC, thisB, otherC, otherB, coordB, isStrict = False):
 
 # return whether or not the interval intersects the other interval according to bounds
 def intervalIntersects(thisC, thisB, otherC, otherB, coordB, isStrict = True):
+    if (otherB <= 0):
+        return False
     otherCAligned = otherC - thisC if otherC >= thisC else otherC + coordB - thisC
     if (isStrict):
-        otherEndAligned = (otherCAligned + otherB) % coordB
-        return ((otherCAligned != 0 and otherCAligned < thisB)
-                or (otherEndAligned < thisB and otherEndAligned != 0))
+        return (otherCAligned < thisB) or (otherCAligned + otherB > coordB)
     else:
-        return otherCAligned <= thisB or (otherCAligned + otherB) % coordB <= thisB
+        return (otherCAligned <= thisB) or (otherCAligned + otherB >= coordB)
 
 # coordinates represent the lowest possible coordinate in all dimensions of this space
 # note that lowest possible does not necessarily mean the smallest number as we are in
@@ -58,13 +60,16 @@ class ConvexSpace:
     # self intersects other if in all dimensions, one of the other coordinates lies in or on the
     # border of self's intervals
     def isIntersecting(self, other, isStrict=True):
-        return all(intervalIntersects(thisC, thisB, otherC, otherB, coordB)
+        return all(intervalIntersects(thisC, thisB, otherC, otherB, coordB, isStrict)
                    for thisC, thisB, otherC, otherB, coordB in
                    zip(self.coordinates, self.boundaries, other.coordinates, other.boundaries,
                        self.coordBoundaries))
 
     # return intersection between this space and another as
     # a list of intervals in all dimensions or an empty list (if no intersection)
+    # these intervals are relative to the coordinates of this space (since an interval can
+    # wrap around this space). for instance, in 1-D, in a 24-sized torus,
+    # the intervals (3, 21) and (23, 6) will have an intersection of (20, 3)
     def intersectionIntervals(self, other):
         intervals = []
         for thisC, thisB, otherC, otherB, coordB in\
@@ -75,27 +80,19 @@ class ConvexSpace:
             if (otherCAligned > thisB and otherCAligned + otherB < coordB):
                 intervals = []
                 break
-            # un-align the coordinate
-            newCoord = thisC if otherCAligned > thisB else (otherCAligned + thisC) % coordB
-            # if otherCAligned is inside this interval, new size just goes until end of this interval
-            # (or wraps around if this interval is full size)
-            # if not, it's the minimum of where the two intervals end
-            if (otherCAligned > thisB):
-                newSize = min((otherCAligned + otherB) % coordB, thisB)
-            elif (thisB < coordB):
-                newSize = min(otherB, thisB - otherCAligned)
+            # relative coordinate
+            newCoord = 0 if otherCAligned >= thisB else otherCAligned
+            # add sizes of the two possible intersections (end of this interval
+            # and start of this interval)
+            newSize = 0
+            if (otherCAligned <= thisB):
+                newSize = newSize + min(otherB, thisB - otherCAligned)
+                if (otherCAligned + otherB > coordB):
+                    newSize = newSize + (otherCAligned + otherB) % coordB
             else:
-                newSize = otherB
+                newSize = min((otherCAligned + otherB) % coordB, thisB)
             intervals.append((newCoord, newSize))
         return intervals
-
-    # return the intersection of this space and another as a new space
-    # if no intersection possible, the new space has dimensions 0
-    def intersection(self, other):
-        intervals = self.intersectionIntervals(other)
-        if (not intervals):
-            return ConvexSpace([0 for x in self.coordinates], [0 for x in self.boundaries], self.coordBoundaries)
-        return ConvexSpace([x[0] for x in intervals], [x[1] for x in intervals], self.coordBoundaries)
 
     # in principle, each dimension can be cut in 2 new ConvexSpaces
     # this is unless there is no space left at any or both sides of this ConvexSpace
@@ -107,46 +104,56 @@ class ConvexSpace:
             return newSpaces
         for d, interval in enumerate(intervals):
             coordB = self.coordBoundaries[d]
-            # align interval to ours
-            if (interval[0] != self.coordinates[d]):
-                newBoundaries = list(self.boundaries)
-                alignment = 0 if interval[0] > self.coordinates[d] else coordB
-                newBoundaries[d] = interval[0] + alignment - self.coordinates[d]
-                newSpaces.append(ConvexSpace(list(self.coordinates), newBoundaries, self.coordBoundaries))
-            intervalEnd = (interval[0] + interval[1]) % coordB
-            selfEnd = (self.coordinates[d] + self.boundaries[d]) % coordB
-            if (intervalEnd != selfEnd):
+            # special case if this space is full torus interval
+            if (self.boundaries[d] >= coordB and interval[1] < coordB):
                 newCoordinates = list(self.coordinates)
-                newCoordinates[d] = intervalEnd
+                newCoordinates[d] = (self.coordinates[d] + interval[0] + interval[1]) % coordB
                 newBoundaries = list(self.boundaries)
-                alignment = 0 if selfEnd > intervalEnd else coordB
-                newBoundaries[d] = selfEnd + alignment - intervalEnd
+                newBoundaries[d] = coordB - interval[1]
+                newSpaces.append(ConvexSpace(newCoordinates, newBoundaries, self.coordBoundaries))
+                continue
+            if (interval[0] != 0):
+                newCoordinates = list(self.coordinates)
+                newBoundaries = list(self.boundaries)
+                # interval could wrap around, check for this case
+                if (interval[0] + interval[1] > self.boundaries[d]):
+                    newCoordinates[d] = ((interval[0] + interval[1]) % self.boundaries[d] +
+                                         self.coordinates[d]) % coordB
+                    newBoundaries[d] = newBoundaries[d] - interval[1]
+                else:
+                    newBoundaries[d] = interval[0]
+                newSpaces.append(ConvexSpace(newCoordinates, newBoundaries, self.coordBoundaries))
+            if (interval[0] + interval[1] < self.boundaries[d]):
+                newCoordinates = list(self.coordinates)
+                newCoordinates[d] = (self.coordinates[d] + interval[0] + interval[1]) % coordB
+                newBoundaries = list(self.boundaries)
+                newBoundaries[d] = self.boundaries[d] - (interval[0] + interval[1])
                 newSpaces.append(ConvexSpace(newCoordinates, newBoundaries, self.coordBoundaries))
         return newSpaces
 
     # just get the joined space over i-th dimension according to intersection intervals
     # these intervals are assumed to not be empty and not 0 anywhere
     # (except for i-th dimension)
-    def getJoinedSpace(self, other, i, intersectionIntervals):
+    def getJoinedSpace(self, other, i, intervals):
         # take full interval of both spaces in i-th dimension
         # and all other intervals as is from intersection to create joined space
-        joinedCoordinates = [x[0] for x in intersectionIntervals]
+        joinedCoordinates = [(x[0] + self.coordinates[d]) % self.coordBoundaries[d]
+        for d, x in enumerate(intervals)]
         # the interval starts with the other coordinate if intersection starts at our coordinate
-        if (intersectionIntervals[i][0] == self.coordinates[i]):
+        if (intervals[i][0] == 0):
             joinedCoordinates[i] = other.coordinates[i]
         else:
             joinedCoordinates[i] = self.coordinates[i]
 
-        joinedBoundaries = [x[1] for x in intersectionIntervals]
+        joinedBoundaries = [x[1] for x in intervals]
         # the interval stops at other coordinate if intersection stops at our coordinate
         coordB = self.coordBoundaries[i]
-        intervalEnd = (intersectionIntervals[i][0] + intersectionIntervals[i][1]) % coordB
-        selfEnd = (self.coordinates[i] + self.boundaries[i]) % coordB
-        otherEnd = (other.coordinates[i] + other.boundaries[i]) % coordB
-        if (intervalEnd == selfEnd):
+        if (intervals[i][0] + intervals[i][1] == self.boundaries[i]):
+            otherEnd = (other.coordinates[i] + other.boundaries[i]) % coordB
             alignment = 0 if otherEnd > joinedCoordinates[i] else coordB
             joinedBoundaries[i] = otherEnd + alignment - joinedCoordinates[i]
         else:
+            selfEnd = (self.coordinates[i] + self.boundaries[i]) % coordB
             alignment = 0 if selfEnd > joinedCoordinates[i] else coordB
             joinedBoundaries[i] = selfEnd + alignment - joinedCoordinates[i]
         # if joined interval fills entire space, align to 0
@@ -173,20 +180,17 @@ class ConvexSpace:
             return []
 
         joinedSpace = self.getJoinedSpace(other, i, intervals)
-        # subtract the intersection from the original spaces and return all resulting spaces
-        # which are not contained in the joined space already
-        return [s for s in [joinedSpace] + self.minus(self.intersection(joinedSpace)) +
-        other.minus(other.intersection(joinedSpace))
-        if s == joinedSpace or not joinedSpace.contains(s)]
+        # subtract the joinedSpace from the original spaces and return all resulting spaces
+        return [joinedSpace] + self.minus(joinedSpace) + other.minus(joinedSpace)
 
     # return joined space containing self and other, if self is adjacent or overlapping in one
     # dimension and all other dimensions overlap entirely
     # return joined space if the update was possible, None if not
     def joinAdjacent(self, other):
         if (self.contains(other)):
-            return ConvexSpace(list(self.coordinates), list(self.boundaries), self.coordBoundaries)
+            return self
         if (other.contains(self)):
-            return ConvexSpace(list(other.coordinates), list(other.boundaries), self.coordBoundaries)
+            return other
         intervals = self.intersectionIntervals(other)
         if (not intervals):
             return None
@@ -220,7 +224,7 @@ def testSpaces():
     assert s1.getJoinedSpace(s2, 0, s1.intersectionIntervals(s2)) == ConvexSpace([0, 2], [6, 2], torusBounds)
     assert s2.getJoinedSpace(s1, 0, s2.intersectionIntervals(s1)) == ConvexSpace([0, 2], [6, 2], torusBounds)
     assert s1.intersectionIntervals(s4) == [(2, 2), (2, 2)]
-    assert s2.intersectionIntervals(s3) == [(6, 0), (6, 0)]
-    assert s3.intersectionIntervals(s1) == [(0, 2), (0, 2)]
+    assert s2.intersectionIntervals(s3) == [(0, 0), (0, 0)]
+    assert s3.intersectionIntervals(s1) == [(2, 2), (2, 2)]
     assert s1.getJoinedSpace(s3, 1, s1.intersectionIntervals(s3)) == ConvexSpace([0, 6], [2, 6], torusBounds)
     assert s3.getJoinedSpace(s1, 1, s3.intersectionIntervals(s1)) == ConvexSpace([0, 6], [2, 6], torusBounds)
