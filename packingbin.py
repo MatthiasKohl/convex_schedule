@@ -104,17 +104,15 @@ class Bin:
         # at most this can happen as much as there are FSs in freelist
         while(True):
             #print('Fitted bin is as follows:\n' + str(self))
-            removedFSs = set()
-            addedFSs = set()
+            joinedSpace = None
             for fs1, fs2 in itertools.combinations(self.freelist, 2):
                 joinedSpace = fs1.joinAdjacent(fs2)
                 if (joinedSpace != None):
-                    removedFSs.update({fs1, fs2})
-                    addedFSs.add(joinedSpace)
-            if (not removedFSs and not addedFSs):
+                    break
+            if (joinedSpace == None):
                 break
-            self.freelist.difference_update(removedFSs)
-            self.freelist.update(addedFSs)
+            self.freelist.difference_update({fs1, fs2})
+            self.freelist.add(joinedSpace)
 
         #print('Fitted space ' + str(boundariesToFit) + ' into bin as follows:\n' + str(self))
 

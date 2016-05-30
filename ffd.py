@@ -340,7 +340,6 @@ def testStrategies(boundaries):
     strategies = [('flat', ffdFlat), ('best-always', ffdBestMetricAlways),
     ('greatest-metric-delta', ffdGreatestMetricDeltaFirst),
     ('best-metric-first', ffdEachBestMetricFirst), ('all-best-metric-first', ffdAllBestMetricFirst)]
-    strategies = [('all-best-metric-first', ffdAllBestMetricFirst)]
     for name, strategy in strategies:
         for alpha in [0.15, 1.0]:
             print('Testing strategy ' + name + ' with alpha ' + str(alpha))

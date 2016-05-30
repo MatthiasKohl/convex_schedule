@@ -46,24 +46,30 @@ class ConvexSpace:
         return not result
 
     def canFit(self, boundariesToFit):
-        return all(thisB >= otherB for thisB, otherB in zip(self.boundaries, boundariesToFit))
+        return not any(thisB < otherB for thisB, otherB in zip(self.boundaries, boundariesToFit))
 
     # for all following functions, the coordinate bounds of the two spaces are assumed to be equal
 
     # self contains other if all other coordinates lie inside the intervals defined by self's coords
     def contains(self, other):
-        return all(intervalContains(thisC, thisB, otherC, otherB, coordB)
-                   for thisC, thisB, otherC, otherB, coordB in
-                   zip(self.coordinates, self.boundaries, other.coordinates, other.boundaries,
-                       self.coordBoundaries))
+        # same as all(intervalContains) but faster
+        return not any(thisB < coordB and (otherC + otherB - thisC > thisB if otherC >= thisC
+                                           else otherC + otherB + coordB - thisC > thisB)
+        for thisC, thisB, otherC, otherB, coordB in
+        zip(self.coordinates, self.boundaries, other.coordinates, other.boundaries,
+            self.coordBoundaries))
 
     # self intersects other if in all dimensions, one of the other coordinates lies in or on the
     # border of self's intervals
     def isIntersecting(self, other, isStrict=True):
-        return all(intervalIntersects(thisC, thisB, otherC, otherB, coordB, isStrict)
-                   for thisC, thisB, otherC, otherB, coordB in
-                   zip(self.coordinates, self.boundaries, other.coordinates, other.boundaries,
-                       self.coordBoundaries))
+        # same as alll(intervalIntersects) but faster
+        return not any(otherC - thisC >= thisB and otherC - thisC + otherB <= coordB
+                       if otherC >= thisC else
+                       otherC + coordB - thisC >= thisB and
+                       otherC + coordB - thisC + otherB <= coordB
+                       for thisC, thisB, otherC, otherB, coordB in
+                       zip(self.coordinates, self.boundaries, other.coordinates, other.boundaries,
+                           self.coordBoundaries))
 
     # return intersection between this space and another as
     # a list of intervals in all dimensions or an empty list (if no intersection)
@@ -84,9 +90,8 @@ class ConvexSpace:
             newCoord = 0 if otherCAligned >= thisB else otherCAligned
             # add sizes of the two possible intersections (end of this interval
             # and start of this interval)
-            newSize = 0
             if (otherCAligned <= thisB):
-                newSize = newSize + min(otherB, thisB - otherCAligned)
+                newSize = min(otherB, thisB - otherCAligned)
                 if (otherCAligned + otherB > coordB):
                     newSize = newSize + (otherCAligned + otherB) % coordB
             else:
@@ -187,21 +192,26 @@ class ConvexSpace:
     # dimension and all other dimensions overlap entirely
     # return joined space if the update was possible, None if not
     def joinAdjacent(self, other):
-        if (self.contains(other)):
-            return self
-        if (other.contains(self)):
-            return other
         intervals = self.intersectionIntervals(other)
         if (not intervals):
             return None
         # get the dimension over which we join, all others have to overlap completely
+        # at the same time, check if all intervals are contained in the same space
         i = -1
+        contained = []
         for d in range(len(intervals)):
             if (intervals[d][1] != self.boundaries[d] or intervals[d][1] != other.boundaries[d]):
-                if (i >= 0):
-                    return None
+                contained.append(intervals[d][1] == self.boundaries[d])
                 i = d
-        return self.getJoinedSpace(other, i, intervals)
+        # if only 1 interval was not overlapping, return the joined space
+        # if all are contained in one of the spaces, return that one, else return None
+        if (len(contained) == 1):
+            return self.getJoinedSpace(other, i, intervals)
+        if (all(contained)):
+            return other
+        if (any(contained)):
+            return None
+        return self
 
     def __str__(self):
         return str(self.coordinates) + ' -> ' + str(self.boundaries)
