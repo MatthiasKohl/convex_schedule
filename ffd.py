@@ -68,13 +68,15 @@ def ffdFlat(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             break
         nFits = nFits + 1
-        if (nFits % (int(len(requestSizes) / 20)) == 0):
+        if (nFits % (int(len(requestSizes) / 20) + 1) == 0):
             print('.', end='', flush=True)
     print()
     return bins
 
 # return difference between second lowest metric and lowest metric for all possible shapes
 # for given requestSize and alpha, or 0 if there are too few possible shapes
+# TODO most shapes have multiple rotations, hence, this will probably always return 0
+# for request sizes where the best metric shapes have multiple rotations
 # TODO this could also return the ratio ?
 def bestMetricsDelta(requestSize, dimensions, possibleSizes, shape_candidates, metric):
     bestMetrics = sorted(metric(p, False, dimensions) for n in possibleSizes[requestSize]
@@ -129,7 +131,7 @@ def ffdGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alph
             print('Spaces leading to this: ' + str(fittedSpaces))
             break
         nFits = nFits + 1
-        if (nFits % (int(len(requestSizes) / 20)) == 0):
+        if (nFits % (int(len(requestSizes) / 20) + 1) == 0):
             print('.', end='', flush=True)
     print()
     return bins
@@ -177,7 +179,7 @@ def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha, isDeb
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             break
         nFits = nFits + 1
-        if (nFits % (int(len(requestSizes) / 20)) == 0):
+        if (nFits % (int(len(requestSizes) / 20) + 1) == 0):
             print('.', end='', flush=True)
     print()
     return bins
@@ -197,7 +199,7 @@ def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, is
         sortedShapes = sorted(sortedShapes,
                               key=lambda p: metric_diameter(p, False, dimensions))
         if (not sortedShapes):
-            print('Cannot allocated ' + str(r) + ' since no shapes are available')
+            print('Cannot allocate ' + str(r) + ' since no shapes are available')
             continue
         isFit = False
         for shape in sortedShapes:
@@ -222,7 +224,49 @@ def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, is
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             break
         nFits = nFits + 1
-        if (nFits % (int(len(requestSizes) / 20)) == 0):
+        if (nFits % (int(len(requestSizes) / 20) + 1) == 0):
+            print('.', end='', flush=True)
+    print()
+    return bins
+
+# seems to be same as greatest-delta atm. greatest-delta needs to change
+def ffdNonStrictEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
+    bins = []
+    possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
+    nFits = 0
+    # sort requests by size
+    for r in sorted(requestSizes, reverse=True):
+        # try any shape which is smaller than last, from best metric to worst
+        # choose diameter as metric because bigger shapes should not get precedence
+        # sort by size first to give precedence to smaller shapes if diameter is the same
+        sortedShapes = sorted((p for n in possibleSizes[r] for p in shape_candidates[n]),
+                              key=lambda p: reduce(operator.mul, p, 1))
+        sortedShapes = sorted(sortedShapes,
+                              key=lambda p: metric_diameter(p, False, dimensions))
+        if (not sortedShapes):
+            print('Cannot allocate ' + str(r) + ' since no shapes are available')
+            continue
+        isFit = False
+        for shape in sortedShapes:
+            for b in bins:
+                if (b.canFit(shape)):
+                    b.fitBest(shape)
+                    fittedBin, fittedShape = (b, shape)
+                    isFit = True
+                    break
+            if (isFit):
+                break
+        if (not isFit):
+            newBin = Bin(dimensions.values())
+            # take the best metric shape in this case
+            newBin.fitBest(sortedShapes[0])
+            bins.append(newBin)
+            fittedBin, fittedShape = (newBin, sortedShapes[0])
+        if (isDebug and not fittedBin.testPossible(True, False)):
+            print('Impossible configuration:\n' + str(fittedBin) + '\n')
+            break
+        nFits = nFits + 1
+        if (nFits % (int(len(requestSizes) / 20) + 1) == 0):
             print('.', end='', flush=True)
     print()
     return bins
@@ -251,6 +295,10 @@ def ffdAllBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, isD
     nFits = 0
     # get all best shapes, then sort all of them by non-increasing size. since sort is stable,
     # the shapes are still in the right order of metric
+    # TODO this is actually same as best-always since as soon as we choose the best metric shape,
+    # we do not consider any other shape to make the packing better (if not isFit,
+    # should check in remaining list whether we still have shapes with that ID left.
+    # if yes, ignore this one and move on to next)
     for id, shape in sorted(((id, p) for l in map(lambda r:
         sortShapesByMetric(r, dimensions, possibleSizes, shape_candidates, metric_diameter),
         requestSizes) for id, p in l), reverse=True, key=lambda x: reduce(operator.mul, x[1], 1)):
@@ -274,7 +322,7 @@ def ffdAllBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, isD
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             break
         nFits = nFits + 1
-        if (nFits % (int(len(requestSizes) / 20)) == 0):
+        if (nFits % (int(len(requestSizes) / 20) + 1) == 0):
             print('.', end='', flush=True)
     print()
     return bins
@@ -399,6 +447,7 @@ def testStrategiesTrace(filename, boundaries):
     # test each strategy on the given sizes provided by trace
     strategies = [('flat', ffdFlat), ('best-always', ffdBestMetricAlways),
     ('greatest-metric-delta', ffdGreatestMetricDeltaFirst),
+    ('non-strict-decreasing-best-metric-first', ffdNonStrictEachBestMetricFirst),
     ('best-metric-first', ffdEachBestMetricFirst), ('all-best-metric-first', ffdAllBestMetricFirst)]
     for name, strategy in strategies:
         for alpha in [0.15, 1.0]:
@@ -415,4 +464,7 @@ if (len(sys.argv) > 1):
 #randomRequestsFFD([24, 24, 24], ffdFlat, 0.15, True)
 #testStrategies([24,24,24])
 #randomRequestsFFD([24,24,24], ffdGreatestMetricDeltaFirst, 0.15, True)
-traceRequestsFFD('request_sizes_scaled_2000.txt', [24,24,24], ffdFlat, 0.15, True)
+#printResults([24,24,24],
+#             traceRequestsFFD('request_sizes_scaled_5000.txt', [24,24,24],
+#                              ffdNonStrictEachBestMetricFirst, 0.15))
+performFFD([24,24,24],[56,34],ffdAllBestMetricFirst,1.0, True)
