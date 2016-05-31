@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 import sys
+import copy
 import math
 import operator
 import itertools
@@ -75,24 +76,35 @@ def ffdFlat(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
 
 # return difference between second lowest metric and lowest metric for all possible shapes
 # for given requestSize and alpha, or 0 if there are too few possible shapes
-# TODO most shapes have multiple rotations, hence, this will probably always return 0
-# for request sizes where the best metric shapes have multiple rotations
 # TODO this could also return the ratio ?
-def bestMetricsDelta(requestSize, dimensions, possibleSizes, shape_candidates, metric):
-    bestMetrics = sorted(metric(p, False, dimensions) for n in possibleSizes[requestSize]
-                         for p in shape_candidates[n])
+def metricsVariance(requestSize, dimensions, possibleSizes, candidates, metric):
+    bestMetrics = sorted(metric(p, False, dimensions)
+                         for n in possibleSizes[requestSize] for p in candidates[n])
     if (len(bestMetrics) < 2):
-        return 0
+         return 0
     return bestMetrics[1] - bestMetrics[0]
+
+def candidates_without_rotations(shape_candidates):
+    candidates = copy.deepcopy(shape_candidates)
+    for n in candidates:
+        while (True):
+            hasRotations = False
+            for p1, p2 in itertools.combinations(candidates[n], 2):
+                if ({s for s in p1} == {s for s in p2}):
+                    hasRotations = True
+                    break
+            if (not hasRotations):
+                break
+            candidates[n].remove(p1)
+    return candidates
 
 def ffdGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
     # sort the requested sizes by non-increasing size,
     # then by non-increasing delta of best metrics of possible shapes (sort must be stable)
-    # TODO sorting request sizes by size is not exactly right as we want to consider the shapes
-    # by non-increasing size. this still needs to be fixed
+    candidates_wor = candidates_without_rotations(shape_candidates)
     possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
     sortedSizes = sorted(sorted(requestSizes, reverse=True), key=lambda r:
-                         bestMetricsDelta(r, dimensions, possibleSizes, shape_candidates, metric_diameter),
+                         metricsVariance(r, dimensions, possibleSizes, candidates_wor, metric_diameter),
                          reverse=True)
     bins = []
     fittedSpaces = []
@@ -296,9 +308,7 @@ def ffdAllBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, isD
     # get all best shapes, then sort all of them by non-increasing size. since sort is stable,
     # the shapes are still in the right order of metric
     # TODO this is actually same as best-always since as soon as we choose the best metric shape,
-    # we do not consider any other shape to make the packing better (if not isFit,
-    # should check in remaining list whether we still have shapes with that ID left.
-    # if yes, ignore this one and move on to next)
+    # we do not consider any other shape to make the packing better
     for id, shape in sorted(((id, p) for l in map(lambda r:
         sortShapesByMetric(r, dimensions, possibleSizes, shape_candidates, metric_diameter),
         requestSizes) for id, p in l), reverse=True, key=lambda x: reduce(operator.mul, x[1], 1)):
@@ -352,8 +362,8 @@ def getStats(dimensions, requestSizes, bins):
     nOptBins = int(math.ceil(totalRequestSize/total))
 
     # unused space excludes the last bin's free space as it might still be filled
-    unusedSpace = sum(map(lambda b:
-                          sum(reduce(operator.mul, s.boundaries, 1) for s in b.freelist), bins[:-1]))
+    unusedSpace = sum(reduce(operator.mul, s.boundaries, 1)
+                      for b in bins[:-1] for s in b.freelist)
     unusedPercentage = unusedSpace * 100 / (len(bins) * total)
 
     totalUsedSpace = sum(reduce(operator.mul, s.boundaries, 1) for b in bins for s in b.spaces)
@@ -448,7 +458,7 @@ def testStrategiesTrace(filename, boundaries):
     strategies = [('flat', ffdFlat), ('best-always', ffdBestMetricAlways),
     ('greatest-metric-delta', ffdGreatestMetricDeltaFirst),
     ('non-strict-decreasing-best-metric-first', ffdNonStrictEachBestMetricFirst),
-    ('best-metric-first', ffdEachBestMetricFirst), ('all-best-metric-first', ffdAllBestMetricFirst)]
+    ('best-metric-first', ffdEachBestMetricFirst)]
     for name, strategy in strategies:
         for alpha in [0.15, 1.0]:
             print('Testing strategy ' + name + ' with alpha ' + str(alpha))
@@ -467,4 +477,4 @@ if (len(sys.argv) > 1):
 #printResults([24,24,24],
 #             traceRequestsFFD('request_sizes_scaled_5000.txt', [24,24,24],
 #                              ffdNonStrictEachBestMetricFirst, 0.15))
-performFFD([24,24,24],[56,34],ffdAllBestMetricFirst,1.0, True)
+#performFFD([24,24,24],[56,34],ffdAllBestMetricFirst,1.0, True)
