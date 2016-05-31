@@ -1,6 +1,7 @@
 #! /usr/bin/python3
 # -*- encoding: utf-8 -*-
 
+import sys
 import math
 import operator
 import itertools
@@ -12,24 +13,36 @@ from shapes import shape_candidates, char_range
 from shapes import metric_compactness, metric_diameter, opt_diameter
 from packingbin import Bin
 
-def chooseCandidateFlat(requestSize, total, shape_candidates, alpha):
+def getPossibleSizes(dimensions, shape_candidates, alpha, isFull = True):
+    # return a dict containing for every possible request size the list of request sizes
+    # to look up in shape_candidates
+    possibleSizes = {}
+    total = reduce(operator.mul, dimensions.values(), 1)
+    for n in reversed(range(1, total + 1)):
+        cutOffSize = min(int(n+n*alpha), total)
+        possibleSizes[n] = [r for r in shape_candidates if r >= n and r <= cutOffSize]
+        if (isFull and not possibleSizes[n]):
+            # make sure that we can have a shape for n by getting the minimal sized shapes
+            possibleSizes[n] = possibleSizes[n+1]
+    return possibleSizes
+
+def chooseCandidateFlat(requestSize, possibleSizes, shape_candidates, alpha):
     # get the minimum candidate (minimal size of the flattest candidates)
-    # of all candidates that can hold this requestSize according to alpha
+    # of all candidates that can hold this requestSize according to possible sizes
     # this is the candidate that leaves the biggest convex free space when fit into the bin,
     # according to the heuristic
-    cutOffSize = min(int(requestSize+requestSize*alpha), total)
-    considered = [p for n, projs in shape_candidates.items()
-               if n >= requestSize and n <= cutOffSize for p in projs]
-    if (not considered):
+    if (not possibleSizes[requestSize]):
         return requestSize
-    return list(min(considered)) # return projection as list of values
+    # return projection as list
+    return list(min(p for n in possibleSizes[requestSize] for p in shape_candidates[n]))
 
-def ffdFlat(dimensions, requestSizes, shape_candidates, alpha):
-    total = reduce(operator.mul, dimensions.values(), 1)
+def ffdFlat(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
+    possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
     # always choose the flattest (and smallest) shape for each request size
     listOfRequestSpaces = map(lambda r:
-                              chooseCandidateFlat(r, total, shape_candidates, alpha), requestSizes)
+                              chooseCandidateFlat(r, possibleSizes, shape_candidates, alpha), requestSizes)
     bins = []
+    nFits = 0
     # sort requested shapes by size and do a first-fit over the bins
     for space in sorted(listOfRequestSpaces, reverse=True,
                         key=lambda p: p if isinstance(p, list) else [0 for d in dimensions]):
@@ -51,45 +64,44 @@ def ffdFlat(dimensions, requestSizes, shape_candidates, alpha):
             newBin.fitFlat(space, firstNonFlatD)
             fittedBin = newBin
             bins.append(newBin)
-        if (not fittedBin.testPossible(False)):
+        if (isDebug and not fittedBin.testPossible(False)):
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             break
-
+        nFits = nFits + 1
+        if (nFits % (int(len(requestSizes) / 20)) == 0):
+            print('.', end='', flush=True)
+    print()
     return bins
 
 # return difference between second lowest metric and lowest metric for all possible shapes
 # for given requestSize and alpha, or 0 if there are too few possible shapes
 # TODO this could also return the ratio ?
-def bestMetricsDelta(requestSize, dimensions, shape_candidates, alpha, metric):
-    total = reduce(operator.mul, dimensions.values(), 1)
-    cutOffSize = min(int(requestSize+requestSize*alpha), total)
-    bestMetrics = sorted([metric(p, False, dimensions) for n, projs in shape_candidates.items()
-    if n >= requestSize and n <= cutOffSize for p in projs])
+def bestMetricsDelta(requestSize, dimensions, possibleSizes, shape_candidates, metric):
+    bestMetrics = sorted(metric(p, False, dimensions) for n in possibleSizes[requestSize]
+                         for p in shape_candidates[n])
     if (len(bestMetrics) < 2):
         return 0
     return bestMetrics[1] - bestMetrics[0]
 
-def ffdGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alpha):
+def ffdGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
     # sort the requested sizes by non-increasing size,
     # then by non-increasing delta of best metrics of possible shapes (sort must be stable)
     # TODO sorting request sizes by size is not exactly right as we want to consider the shapes
     # by non-increasing size. this still needs to be fixed
+    possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
     sortedSizes = sorted(sorted(requestSizes, reverse=True), key=lambda r:
-                         bestMetricsDelta(r, dimensions, shape_candidates, alpha, metric_diameter),
+                         bestMetricsDelta(r, dimensions, possibleSizes, shape_candidates, metric_diameter),
                          reverse=True)
-    bestMetricShapes = (chooseBestMetricShape(r, dimensions, shape_candidates,
-                                              alpha, metric_diameter) for r in requestSizes)
     bins = []
     fittedSpaces = []
     total = reduce(operator.mul, dimensions.values(), 1)
+    nFits = 0
     for size in sortedSizes:
         # try to fit the different shapes in an existing bin, sorted by metric (best to worst)
         # and by size for the same metric
         isFit = False
-        cutOffSize = min(int(size+size*alpha), total)
-        spaces = sorted((p for n, projs in shape_candidates.items()
-                        if n >= size and n <= cutOffSize for p in projs),
-        key=lambda p: reduce(operator.mul, p, 1))
+        spaces = sorted((p for n in possibleSizes[size] for p in shape_candidates[n]),
+                        key=lambda p: reduce(operator.mul, p, 1))
         spaces = sorted(spaces, key=lambda p:
                             metric_diameter(p, False, dimensions))
         if (not spaces):
@@ -112,34 +124,38 @@ def ffdGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alph
             fittedSpaces.append(spaces[0])
             bins.append(newBin)
             fittedBin = newBin
-        if (not fittedBin.testPossible(True, False)):
+        if (isDebug and not fittedBin.testPossible(True, False)):
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             print('Spaces leading to this: ' + str(fittedSpaces))
             break
-
+        nFits = nFits + 1
+        if (nFits % (int(len(requestSizes) / 20)) == 0):
+            print('.', end='', flush=True)
+    print()
     return bins
 
-def chooseBestMetricShapes(requestSize, dimensions, shape_candidates, alpha, metric):
-    total = reduce(operator.mul, dimensions.values(), 1)
-    cutOffSize = min(int(requestSize+requestSize*alpha), total)
-    considered = [p for n, projs in shape_candidates.items()
-               if n >= requestSize and n <= cutOffSize for p in projs]
-    if (not considered):
+def chooseBestMetricShapes(requestSize, dimensions, possibleSizes, shape_candidates, metric):
+    if (not possibleSizes[requestSize]):
         return []
-    minMetric = min(metric(p, False, dimensions) for p in considered)
+    minMetric = min(metric(p, False, dimensions) for n in possibleSizes[requestSize]
+                    for p in shape_candidates[n])
     # get min metric shapes, sorted by non-decreasing size
+    considered = (p for n in possibleSizes[requestSize] for p in shape_candidates[n])
     return sorted(filter(lambda p: metric(p, False, dimensions) == minMetric, considered),
                key=lambda p: reduce(operator.mul, p, 1))
 
-def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha):
+def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
+    possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
     # always pick the best metric shapes and then pack using that
     # if we choose diameter as metric, the best metric of r1 cannot have greater size
     # than the best metric of r2 if r1 < r2, since there cannot be two shapes of different sizes
     # having the best diameter for the requests
     bins = []
+    nFits = 0
     for r in sorted(requestSizes, reverse=True):
         isFit = False
-        bestMetricShapes = chooseBestMetricShapes(r, dimensions, shape_candidates, alpha, metric_diameter)
+        bestMetricShapes = chooseBestMetricShapes(r, dimensions, possibleSizes,
+                                                  shape_candidates, metric_diameter)
         if (not bestMetricShapes):
             print('Cannot allocate ' + str(r) + ' since no shapes are available')
             continue
@@ -157,26 +173,29 @@ def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha):
             newBin.fitBest(bestMetricShapes[0])
             bins.append(newBin)
             fittedBin = newBin
-        if (not fittedBin.testPossible(True, False)):
+        if (isDebug and not fittedBin.testPossible(True, False)):
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             break
-
+        nFits = nFits + 1
+        if (nFits % (int(len(requestSizes) / 20)) == 0):
+            print('.', end='', flush=True)
+    print()
     return bins
 
-def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
+def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
     bins = []
-    total = reduce(operator.mul, dimensions.values(), 1)
-    lastSize = total
+    possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
+    lastSize = reduce(operator.mul, dimensions.values(), 1)
+    nFits = 0
     # sort requests by size
     for r in sorted(requestSizes, reverse=True):
         # try any shape which is smaller than last, from best metric to worst
-        cutOffSize = min(int(r+r*alpha), total)
         # choose diameter as metric because bigger shapes should not get precedence
         # sort by size first to give precedence to smaller shapes if diameter is the same
-        sortedShapes = sorted((p for n, projs in shape_candidates.items()
-                               if n >= r and n <= cutOffSize for p in projs),
-        key=lambda p: reduce(operator.mul, p, 1))
-        sortedShapes = sorted(sortedShapes, key=lambda p: metric_diameter(p, False, dimensions))
+        sortedShapes = sorted((p for n in possibleSizes[r] for p in shape_candidates[n]),
+                              key=lambda p: reduce(operator.mul, p, 1))
+        sortedShapes = sorted(sortedShapes,
+                              key=lambda p: metric_diameter(p, False, dimensions))
         if (not sortedShapes):
             print('Cannot allocated ' + str(r) + ' since no shapes are available')
             continue
@@ -199,18 +218,22 @@ def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
             bins.append(newBin)
             fittedBin, fittedShape = (newBin, sortedShapes[0])
         lastSize = reduce(operator.mul, fittedShape, 1)
-        if (not fittedBin.testPossible(True, False)):
+        if (isDebug and not fittedBin.testPossible(True, False)):
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             break
-
+        nFits = nFits + 1
+        if (nFits % (int(len(requestSizes) / 20)) == 0):
+            print('.', end='', flush=True)
+    print()
     return bins
 
-def chooseBestShapes(requestSize, dimensions, shape_candidates, alpha, metric):
-    total = reduce(operator.mul, dimensions.values(), 1)
-    cutOffSize = min(int(requestSize+requestSize*alpha), total)
-    bestMetricShapes = sorted([p for n, projs in shape_candidates.items()
-           if n >= requestSize and n <= cutOffSize for p in projs], key=lambda p:
-            metric(p, False, dimensions))
+# sort the shapes by metric (best to worst) and associate every shape with an ID
+# this allows to sort all such shapes as a big batch and consider the shapes one by one
+# rather than consider the request sizes one by one and then the shapes of each request size
+def sortShapesByMetric(requestSize, dimensions, possibleSizes, shape_candidates, metric):
+    bestMetricShapes = sorted((p for n in possibleSizes[requestSize]
+                               for p in shape_candidates[n]),
+    key=lambda p: metric(p, False, dimensions))
     if (not bestMetricShapes):
         print('Cannot allocate ' + str(requestSize) + ' since no shapes are available')
         return iter([])
@@ -221,14 +244,15 @@ def chooseBestShapes(requestSize, dimensions, shape_candidates, alpha, metric):
     return ((id, p) for p in
             filter(lambda p: reduce(operator.mul, p, 1) <= bestMetricSize, bestMetricShapes))
 
-def ffdAllBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
+def ffdAllBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
     bins = []
-    total = reduce(operator.mul, dimensions.values(), 1)
+    possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
     consideredIds = set()
+    nFits = 0
     # get all best shapes, then sort all of them by non-increasing size. since sort is stable,
     # the shapes are still in the right order of metric
     for id, shape in sorted(((id, p) for l in map(lambda r:
-        chooseBestShapes(r, dimensions, shape_candidates, alpha, metric_diameter),
+        sortShapesByMetric(r, dimensions, possibleSizes, shape_candidates, metric_diameter),
         requestSizes) for id, p in l), reverse=True, key=lambda x: reduce(operator.mul, x[1], 1)):
         if (id in consideredIds):
             continue
@@ -246,10 +270,13 @@ def ffdAllBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha):
             bins.append(newBin)
             fittedBin = newBin
         consideredIds.add(id)
-        if (not fittedBin.testPossible(True, False)):
+        if (isDebug and not fittedBin.testPossible(True, False)):
             print('Impossible configuration:\n' + str(fittedBin) + '\n')
             break
-
+        nFits = nFits + 1
+        if (nFits % (int(len(requestSizes) / 20)) == 0):
+            print('.', end='', flush=True)
+    print()
     return bins
 
 def printResults(boundaries, results):
@@ -269,22 +296,8 @@ def printResults(boundaries, results):
     print('Total average diameter: ' + str(results[10]) + ', total optimal average diameter: ' +
           str(results[11]))
 
-def randomRequestsFFD(boundaries, strategy, alpha, printDetail = False):
-    # get shape candidates
-    dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
-    candidates = shape_candidates("./primes", False, dimensions)
-
-    total = reduce(operator.mul, boundaries, 1)
-    random.seed()
-    # random amount of requests with normal distributed
-    # ignore values to < 0 or > 8, then scale up to the total size
-    # thus, sizes > 1/8 of the torus have a fairly small probability
-    requestSizes = [int(x * (total-1) / 8) + 1 for x in
-    np.random.normal(0.5, 0.5, random.randint(100, 1000)) if x >= 0 and x <= 8]
-
-    # get flat bin packing
-    bins = strategy(dimensions, requestSizes, candidates, alpha)
-
+def getStats(dimensions, requestSizes, bins):
+    total = reduce(operator.mul, dimensions.values(), 1)
     totalRequestSize = sum(requestSizes)
     nRequests = len(requestSizes)
     nBins = len(bins)
@@ -313,9 +326,18 @@ def randomRequestsFFD(boundaries, strategy, alpha, printDetail = False):
     averageOptDiameter = sum(opt_diameter(r, False, dimensions)
                              for r in requestSizes) / len(requestSizes)
 
-    results = [totalRequestSize, nRequests, nBins, nOptBins, unusedSpace, unusedPercentage,
+    return [totalRequestSize, nRequests, nBins, nOptBins, unusedSpace, unusedPercentage,
     totalUsedSpace, totalUsedExceedingPercentage, totalSubMeshSpace,
     totalSubMeshExceedingPercentage, averageDiameter, averageOptDiameter]
+
+def performFFD(boundaries, requestSizes, strategy, alpha, printDetail = False):
+    # get shape candidates
+    dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
+    candidates = shape_candidates("./primes", False, dimensions)
+
+    # get bin packing
+    bins = strategy(dimensions, requestSizes, candidates, alpha)
+    results = getStats(dimensions, requestSizes, bins)
 
     if (printDetail):
         # print the configuration
@@ -329,11 +351,32 @@ def randomRequestsFFD(boundaries, strategy, alpha, printDetail = False):
     # (need to match each allocated space with request size)
 
     # check if bin configuration is possible for all bins
-    if ((strategy is ffdFlat and not all(b.testPossible(False, True) for b in bins)) or
-        not (strategy is ffdFlat) and not all(b.testPossible(True, False) for b in bins)):
-        print('Not all bin configurations are possible ! Test FAILED')
+    for b in bins:
+        if ((strategy is ffdFlat and not b.testPossible(False, True)) or
+            (not (strategy is ffdFlat) and not b.testPossible(True, False))):
+            print(b)
+            print('Not all bin configurations are possible ! Test FAILED')
+            break
 
     return results
+
+def randomRequestsFFD(boundaries, strategy, alpha, printDetail = False):
+    total = reduce(operator.mul, boundaries, 1)
+    random.seed()
+    # random amount of requests with normal distributed
+    # ignore values to < 0 or > 8, then scale up to the total size
+    # thus, sizes > 1/8 of the torus have a fairly small probability
+    requestSizes = [int(x * (total-1) / 8) + 1 for x in
+    np.random.normal(0.5, 0.5, random.randint(100, 1000)) if x >= 0 and x <= 8]
+    return performFFD(boundaries, requestSizes, strategy, alpha, printDetail)
+
+def traceRequestsFFD(filename, boundaries, strategy, alpha, printDetail = False):
+    file = open(filename)
+    requestSizes = []
+    for line in file.readlines():
+        requestSizes.append(int(line.split()[0]))
+    file.close()
+    return performFFD(boundaries, requestSizes, strategy, alpha, printDetail)
 
 def testStrategies(boundaries):
     # test each strategy 10 times and take average measures
@@ -352,5 +395,24 @@ def testStrategies(boundaries):
             printResults(boundaries, avgResults)
             print('\n')
 
+def testStrategiesTrace(filename, boundaries):
+    # test each strategy on the given sizes provided by trace
+    strategies = [('flat', ffdFlat), ('best-always', ffdBestMetricAlways),
+    ('greatest-metric-delta', ffdGreatestMetricDeltaFirst),
+    ('best-metric-first', ffdEachBestMetricFirst), ('all-best-metric-first', ffdAllBestMetricFirst)]
+    for name, strategy in strategies:
+        for alpha in [0.15, 1.0]:
+            print('Testing strategy ' + name + ' with alpha ' + str(alpha))
+            results = traceRequestsFFD(filename, boundaries, strategy, alpha)
+            printResults(boundaries, results)
+            print('\n')
+
+if (len(sys.argv) > 1):
+    traceFile = sys.argv[1]
+    testStrategiesTrace(traceFile, [24, 24, 24])
+    sys.exit(0)
+
 #randomRequestsFFD([24, 24, 24], ffdFlat, 0.15, True)
-testStrategies([24, 24, 24])
+#testStrategies([24,24,24])
+#randomRequestsFFD([24,24,24], ffdGreatestMetricDeltaFirst, 0.15, True)
+traceRequestsFFD('request_sizes_scaled_2000.txt', [24,24,24], ffdFlat, 0.15, True)
