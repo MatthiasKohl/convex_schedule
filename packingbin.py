@@ -27,6 +27,7 @@ class Bin:
         self.freelist = set([ConvexSpace([0 for b in boundaries], list(boundaries),
                                          self.boundaries)])
         self.spaces = set()
+        self.spaceIDs = dict()
 
     def canFit(self, boundariesToFit):
         return any(space.canFit(boundariesToFit) for space in self.freelist)
@@ -36,13 +37,14 @@ class Bin:
     # of dimensions
     # (free spaces are sorted over all other dimensions first, then i-th dimension)
     # this assumes that canFit was called before
-    def fitFlat(self, boundariesToFit, i):
+    def fitFlat(self, boundariesToFit, i, ID = None):
         FS = min(filter(lambda s: s.canFit(boundariesToFit), self.freelist),
                     key=lambda s:
                     [x for d, x in enumerate(s.coordinates) if d != i] + [s.coordinates[i]])
         AS = ConvexSpace(list(FS.coordinates), list(boundariesToFit), self.boundaries)
         #print('Fitting ' + str(boundariesToFit) + ' into ' + str(FS))
         self.spaces.add(AS)
+        self.spaceIDs[AS] = ID
         self.freelist.remove(FS)
         # print('Free space: ' + str(FS) + ' minus assigned ' + str(AS) +
         #       ': ' + str([str(x) for x in FS.minus(AS)]))
@@ -74,7 +76,7 @@ class Bin:
 
     # fit the given boundaries at the best location according to caving degree
     # i.e. always fit at a corner and try to fill all dimensions as much as possible
-    def fitBest(self, boundariesToFit):
+    def fitBest(self, boundariesToFit, ID = None):
         # get the space with the minimum gap over the most dimensions
         # for each space, sort the boundaries by gap with boundariesToFIt non-decreasing
         # then take the minimum over that list (i.e. the space that has min minimal gap,
@@ -87,6 +89,7 @@ class Bin:
         chosenFSCoords = list(chosenFS.coordinates)
         AS = ConvexSpace(chosenFSCoords, list(boundariesToFit), self.boundaries)
         self.spaces.add(AS)
+        self.spaceIDs[AS] = ID
 
         #print('Fitted bin is as follows:\n' + str(self))
         # make sure that the assigned space is subtracted from all existing FSs
