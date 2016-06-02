@@ -69,3 +69,5 @@ def schedule(boundaries, jobs, time_series_generator):
 
     return schedJobs
 
+# TODO for blue waters traces, for each size s, need to take s // 2 + s % 2 since
+# blue waters has 2 processing nodes per network node
