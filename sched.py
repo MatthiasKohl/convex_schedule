@@ -5,6 +5,8 @@ import sys
 import math
 import itertools
 import datetime
+from functools import reduce
+import operator
 import pytz
 from ffd import ffEachBestMetricFirst
 from shapes import char_range, shape_candidates
@@ -33,6 +35,17 @@ def harmonicGenerator(M, nMin, nMax):
 def harmonic12(nMin, nMax):
     return harmonicGenerator(12, nMin, nMax)
 
+def pack(jobs, schedJobs, currentSchedTime, requestSizes, dimensions, candidates, alpha):
+    # get bin packing of the given sizes and assign a time to each bin according to max
+    # time of jobs in each bin
+    bins = ffEachBestMetricFirst(dimensions, requestSizes, candidates, alpha)
+    # associate max time with each bin and sort by increasing time
+    binsTime = ((b, max(jobs[b.spaceIDs[s]][1] for s in b.spaces)) for b in bins)
+    for b, maxT in sorted(binsTime, key=lambda x: x[1]):
+        schedJobs.extend((b.spaceIDs[s], currentSchedTime, s) for s in b.spaces)
+        currentSchedTime = currentSchedTime + maxT
+    return schedJobs, currentSchedTime
+
 # schedule a list of jobs (tuple of requested size and time) onto a torus with given boundaries
 # return a list of tuples with the ID (index of the job), and a location in space and time of that ID
 # the given time series is used to classify the jobs in time (packing is done for each class)
@@ -50,24 +63,33 @@ def schedule(boundaries, jobs, time_series_generator):
     schedJobs = []
     series = time_series_generator(minTime, maxTime)
     lastTimeSlice = next(series)
+    requestSizes = {}
+    binSize = reduce(operator.mul, boundaries, 1)
     for timeSlice in series:
         # TODO possibly don't just consider the jobs in this slice. instead,
         # if their volume is too small, port them over to next bin
         # volume too small could be smaller than 1 bin
-        requestSizes = dict((i, j[0]) for i, j in enumerate(jobs)
-                            if j[1] >= lastTimeSlice and j[1] < timeSlice)
+        sliceSizes = dict((i, j[0]) for i, j in enumerate(jobs)
+                          if j[1] >= lastTimeSlice and j[1] < timeSlice)
         lastTimeSlice = timeSlice
-        if (not requestSizes):
-            continue
 
-        # get bin packing of the given sizes and assign a time to each bin according to max
-        # time of jobs in each bin
-        bins = ffEachBestMetricFirst(dimensions, requestSizes, candidates, 0.15)
-        # associate max time with each bin and sort by increasing time
-        binsTime = ((b, max(jobs[b.spaceIDs[s]][1] for s in b.spaces)) for b in bins)
-        for b, maxT in sorted(binsTime, key=lambda x: x[1]):
-            schedJobs.extend((b.spaceIDs[s], currentSchedTime, s) for s in b.spaces)
-            currentSchedTime = currentSchedTime + maxT
+        # if (not sliceSizes):
+        #     continue
+
+        if (sum(s for s in requestSizes.values()) +
+            sum(s for s in sliceSizes.values()) < binSize*0.8):
+            requestSizes.update(sliceSizes)
+            continue
+        elif (requestSizes):
+            # pack the last requests, then set requests to new
+            schedJobs, currentSchedTime = pack(jobs, schedJobs, currentSchedTime,
+                                               requestSizes, dimensions, candidates, 0.15)
+        requestSizes = sliceSizes
+
+        schedJobs, currentSchedTime = pack(jobs, schedJobs, currentSchedTime,
+                                           requestSizes, dimensions, candidates, 0.15)
+        # reset requestSizes
+        requestSizes = {}
 
     return schedJobs
 
