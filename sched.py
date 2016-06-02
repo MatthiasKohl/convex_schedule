@@ -4,6 +4,8 @@
 import sys
 import math
 import itertools
+import datetime
+import pytz
 from ffd import ffEachBestMetricFirst
 from shapes import char_range, shape_candidates
 
@@ -69,5 +71,28 @@ def schedule(boundaries, jobs, time_series_generator):
 
     return schedJobs
 
-# TODO for blue waters traces, for each size s, need to take s // 2 + s % 2 since
-# blue waters has 2 processing nodes per network node
+def parse_datetime(dt):
+    d = datetime.datetime(2000, 1, 1)
+    return d.strptime(dt, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.utc)
+
+def printStats(schedule, jobs, actual_sched):
+    cmax = max(s[1] + jobs[s[0]][1] for s in schedule)
+    actual_min_start = min(s[1] for s in actual_sched)
+    actual_cmax = max((s[1] + s[2]) - actual_min_start for s in actual_sched)
+    actual_cmax = int(actual_cmax.total_seconds())
+    print('Cmax of schedule: ' + str(cmax) + ', actual cmax: ' + str(actual_cmax))
+
+def perform_schedule(filename, boundaries, time_series_generator):
+    jobs_sched = []
+    actual_sched = []
+    with open(filename) as infile:
+        for line in infile:
+            startime, endtime, size, walltime = line.split()
+            startime, endtime = parse_datetime(startime), parse_datetime(endtime)
+            size, walltime = int(size), datetime.timedelta(seconds=int(walltime))
+            jobs_sched.append((size, int(walltime.total_seconds())))
+            actual_sched.append((size, startime, walltime))
+    schedule = schedule(boundaries, jobs_sched, time_series_generator)
+    printStats(schedule, jobs_sched, actual_sched)
+    return schedule
+
