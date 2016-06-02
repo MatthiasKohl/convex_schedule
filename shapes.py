@@ -33,12 +33,8 @@ def shape_candidates(extProc, isGrid, dimensions):
     if (isGrid): tmp_top = TMP_GRID
     tmpFileName = TMP_SHAPES + TMP_SEP + tmp_top + TMP_SEP + 'x'.join(map(str, dimensions.values())) + TMP_EXT
     result = {}
-    try:
-        tmpFile = open(tmpFileName, 'r')
+    with open(tmpFileName, 'r') as tmpFile:
         result = process_candidates(tmpFile.read(), dimensions)
-        tmpFile.close()
-    except FileNotFoundError:
-        pass
 
     if (result):
         return result
@@ -54,9 +50,9 @@ def shape_candidates(extProc, isGrid, dimensions):
         return result
 
     outstring = out.decode('ascii')
-    tmpFile = open(tmpFileName, 'w')
-    tmpFile.write(outstring)
-    tmpFile.close()
+    with open(tmpFileName, 'w') as tmpFile:
+        tmpFile.write(outstring)
+
     return process_candidates(outstring, dimensions)
 
 def max_potential_shape(shapes_candidates, isGrid, dimensions, minSize=1, cutOffPercentage=float('inf'), metric=lambda x, y, z : 1):

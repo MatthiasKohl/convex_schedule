@@ -306,11 +306,11 @@ def randomRequestsFFD(boundaries, strategy, unitTest, alpha, printDetail = False
     return performFFD(boundaries, requestSizes, strategy, unitTest, alpha, printDetail)
 
 def traceRequestsFFD(filename, boundaries, strategy, unitTest, alpha, printDetail = False):
-    file = open(filename)
     requestSizes = {}
-    for i, line in enumerate(file.readlines()):
-        requestSizes[i] = int(line.split()[0])
-    file.close()
+    with open(filename) as infile:
+        i = 0
+        for line in infile:
+            requestSizes[i] = int(line.split()[0])
     return performFFD(boundaries, requestSizes, strategy, unitTest, alpha, printDetail)
 
 def testStrategies(boundaries):

@@ -4,9 +4,8 @@ from shapes import process_candidates, metric_compactness, metric_diameter, metr
 from operator import mul
 from functools import reduce
 
-json_file=open('blue_waters_shapes.json')
-data=json.load(json_file)
-json_file.close()
+with open('blue_waters_shapes.json') as json_file:
+    data=json.load(json_file)
 
 csvString = ''
 for c in data['classes']:

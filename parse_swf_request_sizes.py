@@ -13,10 +13,10 @@ try:
     nTotalSize = int(sys.argv[2])
     isClamp = True if int(sys.argv[3]) == 0 else False
     nOutput = int(sys.argv[4])
-    file = open(filename)
 except:
     print('Provided arguments are invalid or cannot open given file <' + filename + '>')
     sys.exit(2)
+
 
 # SWF format is as follows (according to thesis of Emeras 28th august 2013):
 # Headers are preceded by ';' and are ignored here.
@@ -44,27 +44,26 @@ except:
 maxRequestSize, minSubmitTime = 80000, 35000000
 # write to output file
 outFileName = 'request_sizes_' + ('clamped_' if isClamp else 'scaled_') + str(nOutput) + '.txt'
-outFile = open(outFileName, 'w')
 print('Writing to ' + outFileName)
 
-sumOut = 0
-for line in file.readlines():
-    if (line.startswith(';')):
-        continue
-    fields = line.split()
-    submitTime = int(fields[1])
-    # only consider jobs after startup
-    if (submitTime < minSubmitTime):
-       continue
-    requestSize = int(fields[7])
-    if (isClamp and requestSize > nTotalSize):
-        continue
-    elif (not isClamp):
-        requestSize = min(int((requestSize / maxRequestSize) * nTotalSize) + 1, nTotalSize)
-    requestTime = int(fields[8])
-    outFile.write(str(requestSize) + ' ' + str(requestTime) + '\n')
-    sumOut = sumOut + 1
-    if (sumOut >= nOutput):
-        break
-
-file.close()
+with open(filename) as infile:
+    with open(outFileName, 'w') as outFile:
+        sumOut = 0
+        for line in infile:
+            if (line.startswith(';')):
+                continue
+            fields = line.split()
+            submitTime = int(fields[1])
+            # only consider jobs after startup
+            if (submitTime < minSubmitTime):
+               continue
+            requestSize = int(fields[7])
+            if (isClamp and requestSize > nTotalSize):
+                continue
+            elif (not isClamp):
+                requestSize = min(int((requestSize / maxRequestSize) * nTotalSize) + 1, nTotalSize)
+            requestTime = int(fields[8])
+            outFile.write(str(requestSize) + ' ' + str(requestTime) + '\n')
+            sumOut = sumOut + 1
+            if (sumOut >= nOutput):
+                break
