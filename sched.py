@@ -44,8 +44,8 @@ def schedule(boundaries, jobs, time_series_generator):
     dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
     candidates = shape_candidates("./primes", False, dimensions)
 
-    maxTime = max(j[1] for j in jobs, default=0)
-    minTime = min(j[1] for j in jobs, default=1)
+    maxTime = max((j[1] for j in jobs), default=0)
+    minTime = min((j[1] for j in jobs), default=1)
     currentSchedTime = 0
     schedJobs = []
     series = time_series_generator(minTime, maxTime)
@@ -65,7 +65,7 @@ def schedule(boundaries, jobs, time_series_generator):
         bins = ffEachBestMetricFirst(dimensions, requestSizes, candidates, 0.15)
         # associate max time with each bin and sort by increasing time
         binsTime = ((b, max(jobs[b.spaceIDs[s]][1] for s in b.spaces)) for b in bins)
-        for (b, maxT in sorted(binsTime, key=lambda x: x[1])):
+        for b, maxT in sorted(binsTime, key=lambda x: x[1]):
             schedJobs.extend((b.spaceIDs[s], currentSchedTime, s) for s in b.spaces)
             currentSchedTime = currentSchedTime + maxT
 
@@ -73,14 +73,14 @@ def schedule(boundaries, jobs, time_series_generator):
 
 def parse_datetime(dt):
     d = datetime.datetime(2000, 1, 1)
-    return d.strptime(dt, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.utc)
+    return d.strptime(dt, '%Y-%m-%d.%H:%M:%S').replace(tzinfo=pytz.utc)
 
 def printStats(schedule, jobs, actual_sched):
     cmax = max(s[1] + jobs[s[0]][1] for s in schedule)
     actual_min_start = min(s[1] for s in actual_sched)
     actual_cmax = max((s[1] + s[2]) - actual_min_start for s in actual_sched)
     actual_cmax = int(actual_cmax.total_seconds())
-    print('Cmax of schedule: ' + str(cmax) + ', actual cmax: ' + str(actual_cmax))
+    print('Cmax of schedule: ' + str(cmax) + ', actual Cmax: ' + str(actual_cmax))
 
 def perform_schedule(filename, boundaries, time_series_generator):
     jobs_sched = []
@@ -92,7 +92,10 @@ def perform_schedule(filename, boundaries, time_series_generator):
             size, walltime = int(size), datetime.timedelta(seconds=int(walltime))
             jobs_sched.append((size, int(walltime.total_seconds())))
             actual_sched.append((size, startime, walltime))
-    schedule = schedule(boundaries, jobs_sched, time_series_generator)
-    printStats(schedule, jobs_sched, actual_sched)
-    return schedule
+    sched = schedule(boundaries, jobs_sched, time_series_generator)
+    printStats(sched, jobs_sched, actual_sched)
+    return sched
 
+# TODO test
+if __name__ == '__main__':
+    perform_schedule(sys.argv[1], [24,24,24], powers2)

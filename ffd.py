@@ -346,18 +346,20 @@ def testStrategiesTrace(filename, boundaries):
             printResults(boundaries, results)
             print('\n')
 
-if (len(sys.argv) > 1):
-    traceFile = sys.argv[1]
-    testStrategiesTrace(traceFile, [24, 24, 24])
-    sys.exit(0)
+if __name__ == '__main__':
+    if (len(sys.argv) > 1):
+        traceFile = sys.argv[1]
+        testStrategiesTrace(traceFile, [24, 24, 24])
+        sys.exit(0)
 
-#randomRequestsFFD([24, 24, 24], ffdFlat, 0.15, True)
-testStrategies([24,24,24])
-#randomRequestsFFD([24,24,24], ffdGreatestMetricDeltaFirst, 0.15, True)
-#printResults([24,24,24],
-#             traceRequestsFFD('request_sizes_scaled_5000.txt', [24,24,24],
-#                              ffdNonStrictEachBestMetricFirst, 0.15))
-#performFFD([24,24,24],[56,34],ffdAllBestMetricFirst,1.0, True)
+    # JUST TESTS
+    #randomRequestsFFD([24, 24, 24], ffdFlat, 0.15, True)
+    #testStrategies([24,24,24])
+    #randomRequestsFFD([24,24,24], ffdGreatestMetricDeltaFirst, 0.15, True)
+    #printResults([24,24,24],
+    #             traceRequestsFFD('request_sizes_scaled_5000.txt', [24,24,24],
+    #                              ffdNonStrictEachBestMetricFirst, 0.15))
+    #performFFD([24,24,24],[56,34],ffdAllBestMetricFirst,1.0, True)
 
 # RANDOM RESULTS (best for alpha 0.15 is best-metric-first (non-strict))
 # Testing strategy flat with alpha 0.15

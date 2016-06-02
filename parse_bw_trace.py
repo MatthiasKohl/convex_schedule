@@ -70,8 +70,8 @@ def create_jobs_log(min_job_timestamp, total_n_jobs, min_size):
             job_size = job_size // 2 + job_size % 2
             if (job_size < min_size):
                 continue
-            start_time_str = job_start_time.strftime('%Y-%m-%d %H:%M:%S')
-            end_time_str = infodict['end'].strftime('%Y-%m-%d %H:%M:%S')
+            start_time_str = job_start_time.strftime('%Y-%m-%d.%H:%M:%S')
+            end_time_str = infodict['end'].strftime('%Y-%m-%d.%H:%M:%S')
             jobs.append((start_time_str, end_time_str, job_size,
                          int(infodict['Resource_List.walltime'].total_seconds())))
             n_jobs = n_jobs + 1
@@ -92,7 +92,7 @@ start_timestamp = datetime.datetime(year=2016, month=4, day=1, tzinfo=pytz.utc)
 #print_max_time_stamp_after(start_timestamp)
 
 # it seems like jobs are bigger starting from 2016-04-05/2016-04-06, so try to consider that
-min_job_timestamp = datetime.datetime(year=2016, month=4, day=6, tzinfo=pytz.utc)
+min_job_timestamp = datetime.datetime(year=2016, month=4, day=5, tzinfo=pytz.utc)
 # the max end time stamp for jobs starting before 2016-04-05 is 2016-04-06 20:05:30
 # the max end time stamp for jobs starting before 2016-04-06 is 2016-04-06 21:01:24
 #print_max_time_stamp_after(min_job_timestamp)
