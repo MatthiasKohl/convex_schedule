@@ -52,9 +52,9 @@ def placeBest(b, shape, ID = None):
     b.fitBest(shape, ID)
 
 def genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_generator,
-                    shape_generator, place, unitTest = None, isDebug = False):
+                    shape_generator, place, initialBins, unitTest, isDebug):
     possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
-    bins = []
+    bins = list(initialBins)
     nSizes = 0
     fittedSpaces = []
     lastShape = None
@@ -92,9 +92,10 @@ def genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gene
             print('Spaces leading to this: ' + str(fittedSpaces))
             break
         nSizes = nSizes + 1
-        if (nSizes % (int(len(requestSizes) / 20) + 1) == 0):
+        if (isDebug and nSizes % (int(len(requestSizes) / 20) + 1) == 0):
             print('.', end='', flush=True)
-    print()
+    if (isDebug):
+        print()
     return bins
 
 def chooseCandidateFlat(requestSize, possibleSizes, shape_candidates):
@@ -107,7 +108,8 @@ def chooseCandidateFlat(requestSize, possibleSizes, shape_candidates):
     # return projection as list
     return list(min(p for n in possibleSizes[requestSize] for p in shape_candidates[n]))
 
-def ffdFlat(dimensions, requestSizes, shape_candidates, alpha, isDebug = False):
+def ffdFlat(dimensions, requestSizes, shape_candidates, alpha,
+            initialBins=[], isDebug = False):
     def size_gen(requestSizes, possibleSizes, shape_candidates):
         # sort sizes based on their assigned shape (flattest possible) with shapes being
         # sorted based on size from first to last dimension
@@ -122,7 +124,7 @@ def ffdFlat(dimensions, requestSizes, shape_candidates, alpha, isDebug = False):
         yield chooseCandidateFlat(size, possibleSizes, shape_candidates)
 
     return genericFirstFit(dimensions, requestSizes, shape_candidates, alpha,
-                           size_gen, shape_gen, placeFlat, unitTestFlat, isDebug)
+                           size_gen, shape_gen, placeFlat, initialBins, unitTestFlat, isDebug)
 
 # return difference between second lowest metric and lowest metric for all possible shapes
 # for given requestSize and alpha, or 0 if there are too few possible shapes
@@ -134,7 +136,8 @@ def metricsVariance(requestSize, dimensions, possibleSizes, candidates, metric):
          return 0
     return bestMetrics[1] - bestMetrics[0]
 
-def ffGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
+def ffGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alpha,
+                               initialBins=[], isDebug=False):
     # pre-calculate candidates without rotation to consider for sorting the sizes
     candidates_wor = candidates_without_rotations(shape_candidates)
     def size_gen(requestSizes, possibleSizes, shape_candidates):
@@ -152,7 +155,7 @@ def ffGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alpha
         return (s for s in sorted(spaces, key=lambda p: metric_diameter(p, False, dimensions)))
 
     return genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gen,
-                           shape_gen, placeBest, unitTestBest, isDebug)
+                           shape_gen, placeBest, initialBins, unitTestBest, isDebug)
 
 def chooseBestMetricShapes(requestSize, dimensions, possibleSizes, shape_candidates, metric):
     if (not possibleSizes[requestSize]):
@@ -165,7 +168,8 @@ def chooseBestMetricShapes(requestSize, dimensions, possibleSizes, shape_candida
                                      metric(p, False, dimensions) == bestMetric, considered),
     key=lambda p: reduce(operator.mul, p, 1)))
 
-def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
+def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha,
+                        initialBins=[], isDebug=False):
     possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
     # always pick the best metric shapes and then pack using that
     # if we choose diameter as metric, the best metric of r1 cannot have greater size
@@ -178,9 +182,10 @@ def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha, isDeb
                                       metric_diameter)
 
     return genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gen,
-                           shape_gen, placeBest, unitTestBest, isDebug)
+                           shape_gen, placeBest, initialBins, unitTestBest, isDebug)
 
-def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
+def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha,
+                           initialBins=[], isDebug=False):
     def size_gen(requestSizes, possibleSizes, shape_candidates):
         return (s for s in sorted(requestSizes.items(), reverse=True, key=lambda x: x[1]))
     def shape_gen(size, lastShape, possibleSizes, shape_candidates):
@@ -196,9 +201,10 @@ def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, is
                                   key=lambda p: metric_diameter(p, False, dimensions)))
 
     return genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gen,
-                           shape_gen, placeBest, unitTestBest, isDebug)
+                           shape_gen, placeBest, initialBins, unitTestBest, isDebug)
 
-def ffEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, isDebug=False):
+def ffEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha,
+                          initialBins=[], isDebug=False):
     def size_gen(requestSizes, possibleSizes, shape_candidates):
         return (s for s in sorted(requestSizes.items(), reverse=True, key=lambda x: x[1]))
     def shape_gen(size, lastShape, possibleSizes, shape_candidates):
@@ -211,7 +217,7 @@ def ffEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha, isD
                                   key=lambda p: metric_diameter(p, False, dimensions)))
 
     return genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gen,
-                           shape_gen, placeBest, unitTestBest, isDebug)
+                           shape_gen, placeBest, initialBins, unitTestBest, isDebug)
 
 def printResults(boundaries, results):
     print('Dimensions: ' + str(boundaries))
