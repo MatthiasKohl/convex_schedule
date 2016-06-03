@@ -92,7 +92,7 @@ start_timestamp = datetime.datetime(year=2016, month=4, day=1, tzinfo=pytz.utc)
 #print_max_time_stamp_after(start_timestamp)
 
 # it seems like jobs are bigger starting from 2016-04-05/2016-04-06, so try to consider that
-min_job_timestamp = datetime.datetime(year=2016, month=4, day=5, tzinfo=pytz.utc)
+min_job_timestamp = datetime.datetime(year=2016, month=4, day=6, tzinfo=pytz.utc)
 # the max end time stamp for jobs starting before 2016-04-05 is 2016-04-06 20:05:30
 # the max end time stamp for jobs starting before 2016-04-06 is 2016-04-06 21:01:24
 #print_max_time_stamp_after(min_job_timestamp)
