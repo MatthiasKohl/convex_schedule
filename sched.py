@@ -5,11 +5,25 @@ import sys
 import math
 import itertools
 import datetime
+import copy
 from functools import reduce
 import operator
 import pytz
-from ffd import ffEachBestMetricFirst
+from ffd import ffEachBestMetricFirst, getPossibleSizes
 from shapes import char_range, shape_candidates
+
+def testSchedule(schedule, jobs):
+    scheduledIDs = sorted(i for i, t, s in schedule)
+    if (len(scheduledIDs) > len(jobs)):
+        print('Some jobs were scheduled twice: #scheduled IDs: ' + str(len(scheduledIDs)) +
+              ', #IDs: ' + str(len(jobs)))
+        return False
+    if (len(scheduledIDs) < len(jobs) or scheduledIDs != [i for i in range(len(jobs))]):
+        print('Some jobs were not scheduled')
+        return False
+    # TODO add test for time overlaps (space overlaps should not happen,
+    # since bin packing can be tested)
+    return True
 
 def powersGenerator(power, nMin, nMax):
     start = 0 if nMin == 0 else int(math.floor(math.log(nMin, power)))
@@ -35,12 +49,15 @@ def harmonicGenerator(M, nMin, nMax):
 def harmonic12(nMin, nMax):
     return harmonicGenerator(12, nMin, nMax)
 
+def max_bin_time(b, jobs):
+    return max(jobs[b.spaceIDs[s]][1] for s in b.spaces)
+
 def pack(jobs, requestSizes, initialBins, dimensions, candidates, alpha):
     # get bin packing of the given sizes and assign a time to each bin according to max
     # time of jobs in each bin
     bins = ffEachBestMetricFirst(dimensions, requestSizes, candidates, alpha, initialBins)
     # associate max time with each bin and sort by increasing time
-    return [(b, max(jobs[b.spaceIDs[s]][1] for s in b.spaces)) for b in bins]
+    return bins
 
 # schedule a list of jobs (tuple of requested size and time) onto a torus with given boundaries
 # return a list of tuples with the ID (index of the job), and a location in space and time of that ID
@@ -48,18 +65,13 @@ def pack(jobs, requestSizes, initialBins, dimensions, candidates, alpha):
 # this series must be strictly increasing, the first element must be lesser or equal to the
 # given minimum and last element must be strictly greater than the given max value
 # the given time for each job must be integers greater or equal to 1
-def schedule_strict(boundaries, jobs, time_series_generator):
-    # get shape candidates
-    dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
-    candidates = shape_candidates("./primes", False, dimensions)
-
+def schedule_strict(dimensions, candidates, alpha, jobs, time_series_generator):
     maxTime = max((j[1] for j in jobs), default=0)
     minTime = min((j[1] for j in jobs), default=1)
     currentTime = 0
     schedule = []
     series = time_series_generator(minTime, maxTime)
     lastTimeSlice = next(series)
-    binSize = reduce(operator.mul, boundaries, 1)
     for timeSlice in series:
         requestSizes = dict((i, j[0]) for i, j in enumerate(jobs)
                           if j[1] >= lastTimeSlice and j[1] < timeSlice)
@@ -68,27 +80,22 @@ def schedule_strict(boundaries, jobs, time_series_generator):
         if (not requestSizes):
             continue
 
-        binsTime = pack(jobs, requestSizes, [], dimensions, candidates, 0.15)
-        print(len(binsTime))
-        for b, maxT in sorted(binsTime, key=lambda x: x[1]):
+        bins = pack(jobs, requestSizes, [], dimensions, candidates, alpha)
+        for b in sorted(binsTime, key=lambda b: max_bin_time(b, jobs)):
             schedule.extend((b.spaceIDs[s], currentTime, s) for s in b.spaces)
-            currentTime = currentTime + maxT
+            currentTime = currentTime + max_bin_time(b, jobs)
 
     return schedule
 
 # same as above but allow to pack the last bin of a packing in the next packing,
-# while keeping it in the same shelf in terms of time series
-def schedule_last_bin(boundaries, jobs, time_series_generator):
-    # get shape candidates
-    dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
-    candidates = shape_candidates("./primes", False, dimensions)
-
+# while keeping it in the same shelf in terms of time series, if this reduces the Cmax
+def schedule_last_bin(dimensions, candidates, alpha, jobs, time_series_generator):
     maxTime = max((j[1] for j in jobs), default=0)
     minTime = min((j[1] for j in jobs), default=1)
     series = time_series_generator(minTime, maxTime)
     lastTimeSlice = next(series)
-    binSize = reduce(operator.mul, boundaries, 1)
-    initialBins = []
+    binSize = reduce(operator.mul, dimensions.values(), 1)
+    initialBin = None
     totalBinsTime = []
     for timeSlice in series:
         requestSizes = dict((i, j[0]) for i, j in enumerate(jobs)
@@ -98,18 +105,38 @@ def schedule_last_bin(boundaries, jobs, time_series_generator):
         if (not requestSizes):
             continue
 
-        binsTime = pack(jobs, requestSizes, initialBins, dimensions, candidates, 0.15)
-        # skip the initial bins at the start since we already added them in the last packing
-        totalBinsTime.extend((timeSlice, b, maxT) for b, maxT in binsTime[len(initialBins):])
+        # make a reference packing without initial bins
+        binsRef = pack(jobs, requestSizes, [], dimensions, candidates, alpha)
+        skipBins = 0
+        if (initialBin != None):
+            # need to deep copy the initial bins such that they are not modified if we don't choose them
+            newBins = pack(jobs, requestSizes, [copy.deepcopy(initialBin)],
+                            dimensions, candidates, alpha)
+            # check if this packing is better than reference packing
+            if (sum(max_bin_time(b, jobs) for b in newBins) <
+                sum(max_bin_time(b, jobs) for b in binsRef) + max_bin_time(initialBin, jobs)):
+                # remove last bin from total bins (this is the initial bin) and replace it by new copy
+                # but with old time-slice
+                skipBins = 1
+                binsRef = newBins
+                t, b = totalBinsTime.pop()
+                totalBinsTime.append((t, newBins[0]))
+
+        # possibly skip the initial bins at the start since we already added them in the last packing
+        totalBinsTime.extend((timeSlice, b) for b in binsRef[skipBins:])
         # the new initial bin is the last one from this packing
-        initialBins = [binsTime[-1][0]]
+        initialBin = binsRef[-1]
+
+        # bins = pack(jobs, requestSizes, [] if initialBin == None else [initialBin], dimensions, candidates, alpha)
+        # totalBinsTime.extend((timeSlice, b) for b in bins[(0 if initialBin == None else 1):])
+        # initialBin = bins[-1]
 
     currentTime = 0
     schedule = []
     # sort the total bins by max time, then by time slice again to keep the order of time slices
-    for t, b, maxT in sorted(sorted(totalBinsTime, key=lambda x: x[2]), key=lambda x: x[0]):
+    for t, b in sorted(sorted(totalBinsTime, key=lambda x: max_bin_time(x[1], jobs)), key=lambda x: x[0]):
         schedule.extend((b.spaceIDs[s], currentTime, s) for s in b.spaces)
-        currentTime = currentTime + maxT
+        currentTime = currentTime + max_bin_time(b, jobs)
 
     return schedule
 
@@ -117,32 +144,31 @@ def parse_datetime(dt):
     d = datetime.datetime(2000, 1, 1)
     return d.strptime(dt, '%Y-%m-%d.%H:%M:%S').replace(tzinfo=pytz.utc)
 
-def printStats(schedule, jobs, actual_sched, boundaries):
+def printStats(schedule, jobs, actual_sched, boundaries, possibleSizes):
     cmax = max(s[1] + jobs[s[0]][1] for s in schedule)
     actual_min_start = min(s[1] for s in actual_sched)
     actual_cmax = max((s[1] + s[2]) - actual_min_start for s in actual_sched)
     actual_cmax = int(actual_cmax.total_seconds())
     max_job_time = max(j[1] for j in jobs)
-    jobs_volume = sum(j[0] * j[1] for j in jobs)
-    # lower bound for Cmax
-    cmax_lb = max(max_job_time, jobs_volume / reduce(operator.mul, boundaries, 1))
-    print('Cmax lower bound: ' + str(cmax_lb) + ', Cmax of schedule: ' + str(cmax) +
-          ' (loss of ' + str((cmax - cmax_lb) * 100 / cmax_lb) +
-          '% compared to lower bound), actual Cmax: ' + str(actual_cmax))
+    jobs_work = sum(j[0] * j[1] for j in jobs)
+    # lower bound for Cmax (non-convex)
+    cmax_lb_non_convex = max(max_job_time, jobs_work / reduce(operator.mul, boundaries, 1))
+    jobs_convex_work = sum(min(possibleSizes[j[0]]) * j[1] for j in jobs)
+    cmax_lb_convex = max(max_job_time, jobs_convex_work / reduce(operator.mul, boundaries, 1))
+    print('Cmax lower bound (non-convex): ' + str(cmax_lb_non_convex) +
+          ', Cmax lower bound (convex): ' + str(cmax_lb_convex) +
+          ', Cmax of schedule: ' + str(cmax) +
+          ' (loss of ' + str((cmax - cmax_lb_non_convex) * 100 / cmax_lb_non_convex) +
+          '% compared to non-convex lower bound, ' +
+          str((cmax - cmax_lb_convex) * 100 / cmax_lb_convex) +
+          '% compared to convex lower bound), actual Cmax: ' + str(actual_cmax))
 
-def testSchedule(schedule, jobs):
-    scheduledIDs = sorted(i for i, t, s in schedule)
-    if (len(scheduledIDs) > len(jobs)):
-        print('Some jobs were scheduled twice')
-        return False
-    if (len(scheduledIDs) < len(jobs) or scheduledIDs != [i for i in range(len(jobs))]):
-        print('Some jobs were not scheduled')
-        return False
-    # TODO add test for time overlaps (space overlaps should not happen,
-    # since bin packing can be tested)
-    return True
+def perform_schedule(filename, boundaries, time_series_generator, alpha):
+    # get shape candidates
+    dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
+    candidates = shape_candidates("./primes", False, dimensions)
+    possibleSizes = getPossibleSizes(dimensions, candidates, alpha)
 
-def perform_schedule(filename, boundaries, time_series_generator):
     jobs_sched = []
     actual_sched = []
     with open(filename) as infile:
@@ -152,38 +178,34 @@ def perform_schedule(filename, boundaries, time_series_generator):
             size, walltime = int(size), datetime.timedelta(seconds=int(walltime))
             jobs_sched.append((size, int(walltime.total_seconds())))
             actual_sched.append((size, startime, walltime))
-    sched = schedule_strict(boundaries, jobs_sched, time_series_generator)
-    if (not testSchedule(sched, jobs_sched)):
-        return
-    printStats(sched, jobs_sched, actual_sched, boundaries)
-    sched_last = schedule_last_bin(boundaries, jobs_sched, time_series_generator)
+    # sched = schedule_strict(dimensions, candidates, alpha, jobs_sched, time_series_generator)
+    # if (not testSchedule(sched, jobs_sched)):
+    #     return
+    # printStats(sched, jobs_sched, actual_sched, boundaries, possibleSizes)
+    sched_last = schedule_last_bin(dimensions, candidates, alpha, jobs_sched, time_series_generator)
     if (not testSchedule(sched_last, jobs_sched)):
         return
-    printStats(sched_last, jobs_sched, actual_sched, boundaries)
+    printStats(sched_last, jobs_sched, actual_sched, boundaries, possibleSizes)
 
 if __name__ == '__main__':
-    perform_schedule(sys.argv[1], [24,24,24], powers2)
+    # alpha of 0.15 gave best results with packing
+    perform_schedule(sys.argv[1], [24,24,24], powers2, 0.15)
 
 # RESULTS
 # bw_request_sizes_20160405_5000.txt
-# Cmax lower bound: 172800, actual Cmax: 302607
+# Cmax lower bound non-convex: 172800, convex: 172800, actual Cmax: 302607
 # strategy strict: Cmax of schedule: 441000 (loss of ~155% compared to lower bound)
-# strategy last_bin: Cmax of schedule: 201660 (loss of ~16.7% compared to lower bound)
-# UNUSED strategy all_bins: Cmax of schedule: 203820 (loss of ~18% compared to lower bound)
-# UNUSED strategy bin_size: Cmax of schedule: 213780 (loss of ~23.7% compared to lower bound)
+# strategy last_bin: Cmax of schedule: 207900 (loss of ~20.3% compared to lower bounds)
 
 # bw_request_sizes_20160406_5000.txt
-# Cmax lower bound: 172800, actual Cmax: 333918
+# Cmax lower bound non-convex: 172800, convex: 172800, actual Cmax: 333918
 # strategy strict: Cmax of schedule: 473880 (loss of ~174% compared to lower bound)
-# strategy last_bin: Cmax of schedule: 293880 (loss of ~70% compared to lower bound)
-# UNUSED strategy all_bins: Cmax of schedule: 297180 (loss of ~72% compared to lower bound)
-# UNUSED strategy bin_size: Cmax of schedule: 327900 (loss of ~89.8% compared to lower bound)
+# strategy last_bin: Cmax of schedule: 327480 (loss of ~89.5% compared to lower bounds)
 
 # bw_request_sizes_20160406_20000.txt
-# Cmax lower bound: 387260, actual Cmax: 508345
-# strategy strict: Cmax of schedule: 1000050 (loss of ~158% compared to lower bound)
-# strategy last_bin: Cmax of schedule: 720810 (loss of ~86.1% compared to lower bound)
-# UNUSED strategy all_bins: Cmax of schedule: 760020 (loss of ~96.3% compared to lower bound)
+# Cmax lower bound non-convex: 387260, convex: 396851, actual Cmax: 508345
+# strategy strict: Cmax of schedule: 1000050 (loss of ~158%/152% compared to lower bounds)
+# strategy last_bin: Cmax of schedule: 764580 (loss of ~97.4%/92.7% compared to lower bounds)
 
 # this strategy is not used as it does not make a lot of sense (cutOff is arbitrary etc)
 # and experiments show it is performing worse than last_bin strategy
