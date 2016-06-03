@@ -113,44 +113,6 @@ def schedule_last_bin(boundaries, jobs, time_series_generator):
 
     return schedule
 
-# TODO this strategy is not smart, since we waste space by packing shorter jobs into the long bins first
-# same as above but start with biggest jobs and allow to pack the smaller jobs into all bins
-# of the bigger jobs. this will impact negatively on metrics like flow, since short jobs might
-# get scheduled along with long jobs (in time) at the very end of the schedule
-def schedule_all_bins(boundaries, jobs, time_series_generator):
-        # get shape candidates
-    dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
-    candidates = shape_candidates("./primes", False, dimensions)
-
-    maxTime = max((j[1] for j in jobs), default=0)
-    minTime = min((j[1] for j in jobs), default=1)
-    # go from upper bound to lower of time slice
-    series = reversed([t for t in time_series_generator(minTime, maxTime)])
-    lastTimeSlice = next(series)
-    binSize = reduce(operator.mul, boundaries, 1)
-    initialBins = []
-    totalBinsTime = []
-    for timeSlice in series:
-        requestSizes = dict((i, j[0]) for i, j in enumerate(jobs)
-                          if j[1] < lastTimeSlice and j[1] >= timeSlice)
-        lastTimeSlice = timeSlice
-
-        if (not requestSizes):
-            continue
-
-        totalBinsTime = pack(jobs, requestSizes, initialBins, dimensions, candidates, 0.15)
-        initialBins = [b for b,maxT in totalBinsTime]
-
-    currentTime = 0
-    schedule = []
-    # sort the total bins by max time
-    for b, maxT in sorted(totalBinsTime, key=lambda x: x[1]):
-        schedule.extend((b.spaceIDs[s], currentTime, s) for s in b.spaces)
-        currentTime = currentTime + maxT
-
-    return schedule
-
-
 def parse_datetime(dt):
     d = datetime.datetime(2000, 1, 1)
     return d.strptime(dt, '%Y-%m-%d.%H:%M:%S').replace(tzinfo=pytz.utc)
@@ -190,18 +152,14 @@ def perform_schedule(filename, boundaries, time_series_generator):
             size, walltime = int(size), datetime.timedelta(seconds=int(walltime))
             jobs_sched.append((size, int(walltime.total_seconds())))
             actual_sched.append((size, startime, walltime))
-    # sched = schedule_strict(boundaries, jobs_sched, time_series_generator)
-    # if (not testSchedule(sched, jobs_sched)):
-    #     return
-    # printStats(sched, jobs_sched, actual_sched, boundaries)
-    # sched_last = schedule_last_bin(boundaries, jobs_sched, time_series_generator)
-    # if (not testSchedule(sched_last, jobs_sched)):
-    #     return
-    # printStats(sched_last, jobs_sched, actual_sched, boundaries)
-    sched_all = schedule_all_bins(boundaries, jobs_sched, time_series_generator)
-    if (not testSchedule(sched_all, jobs_sched)):
+    sched = schedule_strict(boundaries, jobs_sched, time_series_generator)
+    if (not testSchedule(sched, jobs_sched)):
         return
-    printStats(sched_all, jobs_sched, actual_sched, boundaries)
+    printStats(sched, jobs_sched, actual_sched, boundaries)
+    sched_last = schedule_last_bin(boundaries, jobs_sched, time_series_generator)
+    if (not testSchedule(sched_last, jobs_sched)):
+        return
+    printStats(sched_last, jobs_sched, actual_sched, boundaries)
 
 if __name__ == '__main__':
     perform_schedule(sys.argv[1], [24,24,24], powers2)
@@ -211,21 +169,21 @@ if __name__ == '__main__':
 # Cmax lower bound: 172800, actual Cmax: 302607
 # strategy strict: Cmax of schedule: 441000 (loss of ~155% compared to lower bound)
 # strategy last_bin: Cmax of schedule: 201660 (loss of ~16.7% compared to lower bound)
-# strategy all_bins: Cmax of schedule: 203820 (loss of ~18% compared to lower bound)
+# UNUSED strategy all_bins: Cmax of schedule: 203820 (loss of ~18% compared to lower bound)
 # UNUSED strategy bin_size: Cmax of schedule: 213780 (loss of ~23.7% compared to lower bound)
 
 # bw_request_sizes_20160406_5000.txt
 # Cmax lower bound: 172800, actual Cmax: 333918
 # strategy strict: Cmax of schedule: 473880 (loss of ~174% compared to lower bound)
 # strategy last_bin: Cmax of schedule: 293880 (loss of ~70% compared to lower bound)
-# strategy all_bins: Cmax of schedule: 297180 (loss of ~72% compared to lower bound)
+# UNUSED strategy all_bins: Cmax of schedule: 297180 (loss of ~72% compared to lower bound)
 # UNUSED strategy bin_size: Cmax of schedule: 327900 (loss of ~89.8% compared to lower bound)
 
 # bw_request_sizes_20160406_20000.txt
 # Cmax lower bound: 387260, actual Cmax: 508345
 # strategy strict: Cmax of schedule: 1000050 (loss of ~158% compared to lower bound)
 # strategy last_bin: Cmax of schedule: 720810 (loss of ~86.1% compared to lower bound)
-# strategy all_bins: Cmax of schedule: 760020 (loss of ~96.3% compared to lower bound)
+# UNUSED strategy all_bins: Cmax of schedule: 760020 (loss of ~96.3% compared to lower bound)
 
 # this strategy is not used as it does not make a lot of sense (cutOff is arbitrary etc)
 # and experiments show it is performing worse than last_bin strategy
@@ -270,5 +228,42 @@ if __name__ == '__main__':
 
 #     # make sure that the last requests are scheduled
 #     currentTime, schedule = _sched_requests(requestSizes, currentTime, schedule)
+
+#     return schedule
+
+# TODO this strategy is not smart, since we waste space by packing shorter jobs into the long bins first
+# same as above but start with biggest jobs and allow to pack the smaller jobs into all bins
+# of the bigger jobs. this will impact negatively on metrics like flow, since short jobs might
+# get scheduled along with long jobs (in time) at the very end of the schedule
+# def schedule_all_bins(boundaries, jobs, time_series_generator):
+#         # get shape candidates
+#     dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
+#     candidates = shape_candidates("./primes", False, dimensions)
+
+#     maxTime = max((j[1] for j in jobs), default=0)
+#     minTime = min((j[1] for j in jobs), default=1)
+#     # go from upper bound to lower of time slice
+#     series = reversed([t for t in time_series_generator(minTime, maxTime)])
+#     lastTimeSlice = next(series)
+#     binSize = reduce(operator.mul, boundaries, 1)
+#     initialBins = []
+#     totalBinsTime = []
+#     for timeSlice in series:
+#         requestSizes = dict((i, j[0]) for i, j in enumerate(jobs)
+#                           if j[1] < lastTimeSlice and j[1] >= timeSlice)
+#         lastTimeSlice = timeSlice
+
+#         if (not requestSizes):
+#             continue
+
+#         totalBinsTime = pack(jobs, requestSizes, initialBins, dimensions, candidates, 0.15)
+#         initialBins = [b for b,maxT in totalBinsTime]
+
+#     currentTime = 0
+#     schedule = []
+#     # sort the total bins by max time
+#     for b, maxT in sorted(totalBinsTime, key=lambda x: x[1]):
+#         schedule.extend((b.spaceIDs[s], currentTime, s) for s in b.spaces)
+#         currentTime = currentTime + maxT
 
 #     return schedule
