@@ -144,6 +144,17 @@ def parse_datetime(dt):
     d = datetime.datetime(2000, 1, 1)
     return d.strptime(dt, '%Y-%m-%d.%H:%M:%S').replace(tzinfo=pytz.utc)
 
+# TODO issues with comparison
+# - on-line vs off-line
+# - at start time, machine is full for actual schedule, for our schedule we consider it empty
+# - there can be jobs which start during the time considered, but which we do not include because
+# they exit after all the jobs considered have exited (these jobs can demand resources on the
+# actual schedule which we don't consider in ours)
+# - how to calculate Cmax of the actual schedule and which times should we use for our schedule ?
+# at the moment, Cmax is calculated by using actual start time + requested time
+# however, our schedule uses the requested time for all jobs. the on-line schedule is re-calculated
+# anytime a job exits, such that the Cmax is more dependent on the actual wall-times of jobs
+# whereas we are dependent on the requested wall-time (this can be much more)
 def printStats(schedule, jobs, actual_sched, boundaries, possibleSizes):
     cmax = max(s[1] + jobs[s[0]][1] for s in schedule)
     actual_min_start = min(s[1] for s in actual_sched)
