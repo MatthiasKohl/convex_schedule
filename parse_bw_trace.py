@@ -60,7 +60,9 @@ def create_jobs_log(min_job_timestamp, total_n_jobs, min_size):
             if (job_start_time < min_job_timestamp):
                 continue
             n_considered = n_considered + 1
-            if (not ('Resource_List.walltime' in infodict) or not ('Resource_List.nodect' in infodict)):
+            if (not ('Resource_List.walltime' in infodict) or not ('Resource_List.nodect' in infodict)
+                or not ('resources_used.walltime' in infodict)
+                or infodict['resources_used.walltime'] < datetime.timedelta(seconds=1)):
                 n_missing = n_missing + 1
                 print('.', end='', flush=True)
                 continue
@@ -73,7 +75,8 @@ def create_jobs_log(min_job_timestamp, total_n_jobs, min_size):
             start_time_str = job_start_time.strftime('%Y-%m-%d.%H:%M:%S')
             end_time_str = infodict['end'].strftime('%Y-%m-%d.%H:%M:%S')
             jobs.append((start_time_str, end_time_str, job_size,
-                         int(infodict['Resource_List.walltime'].total_seconds())))
+                         int(infodict['Resource_List.walltime'].total_seconds()),
+                         int(infodict['resources_used.walltime'].total_seconds())))
             n_jobs = n_jobs + 1
             if (n_jobs >= total_n_jobs):
                 break

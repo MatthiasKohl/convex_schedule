@@ -100,8 +100,8 @@ def genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gene
             maxFreeSpaces = numFreeSpaces
     if (isDebug):
         print()
-    print('The maximum number of total free spaces during the whole packing was: ' +
-          str(maxFreeSpaces))
+    # print('The maximum number of total free spaces during the whole packing was: ' +
+    #       str(maxFreeSpaces))
     return bins
 
 def chooseCandidateFlat(requestSize, possibleSizes, shape_candidates):

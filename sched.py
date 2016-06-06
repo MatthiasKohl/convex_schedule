@@ -19,10 +19,11 @@ def testSchedule(schedule, jobs):
               ', #IDs: ' + str(len(jobs)))
         return False
     if (len(scheduledIDs) < len(jobs) or scheduledIDs != [i for i in range(len(jobs))]):
-        print('Some jobs were not scheduled')
+        print('Some jobs were not scheduled: There were ' +
+              str(len(scheduledIDs)) + ' scheduled jobs vs ' + str(len(jobs)) + ' requested')
         return False
     # TODO add test for time overlaps (space overlaps should not happen,
-    # since bin packing can be tested)
+    # since bin packing is assumed to be tested)
     return True
 
 def powersGenerator(power, nMin, nMax):
@@ -81,7 +82,7 @@ def schedule_strict(dimensions, candidates, alpha, jobs, time_series_generator):
             continue
 
         bins = pack(jobs, requestSizes, [], dimensions, candidates, alpha)
-        for b in sorted(binsTime, key=lambda b: max_bin_time(b, jobs)):
+        for b in sorted(bins, key=lambda b: max_bin_time(b, jobs)):
             schedule.extend((b.spaceIDs[s], currentTime, s) for s in b.spaces)
             currentTime = currentTime + max_bin_time(b, jobs)
 
@@ -184,15 +185,15 @@ def perform_schedule(filename, boundaries, time_series_generator, alpha):
     actual_sched = []
     with open(filename) as infile:
         for line in infile:
-            startime, endtime, size, walltime = line.split()
+            startime, endtime, size, requestedtime, walltime = line.split()
             startime, endtime = parse_datetime(startime), parse_datetime(endtime)
             size, walltime = int(size), datetime.timedelta(seconds=int(walltime))
             jobs_sched.append((size, int(walltime.total_seconds())))
             actual_sched.append((size, startime, walltime))
-    # sched = schedule_strict(dimensions, candidates, alpha, jobs_sched, time_series_generator)
-    # if (not testSchedule(sched, jobs_sched)):
-    #     return
-    # printStats(sched, jobs_sched, actual_sched, boundaries, possibleSizes)
+    sched = schedule_strict(dimensions, candidates, alpha, jobs_sched, time_series_generator)
+    if (not testSchedule(sched, jobs_sched)):
+        return
+    printStats(sched, jobs_sched, actual_sched, boundaries, possibleSizes)
     sched_last = schedule_last_bin(dimensions, candidates, alpha, jobs_sched, time_series_generator)
     if (not testSchedule(sched_last, jobs_sched)):
         return
@@ -202,7 +203,7 @@ if __name__ == '__main__':
     # alpha of 0.15 gave best results with packing
     perform_schedule(sys.argv[1], [24,24,24], powers2, 0.15)
 
-# RESULTS
+# RESULTS using requested walltimes
 # bw_request_sizes_20160405_5000.txt
 # Cmax lower bound non-convex: 172800, convex: 172800, actual Cmax: 302607
 # strategy strict: Cmax of schedule: 441000 (loss of ~155% compared to lower bound)
@@ -217,6 +218,22 @@ if __name__ == '__main__':
 # Cmax lower bound non-convex: 387260, convex: 396851, actual Cmax: 508345
 # strategy strict: Cmax of schedule: 1000050 (loss of ~158%/152% compared to lower bounds)
 # strategy last_bin: Cmax of schedule: 764580 (loss of ~97.4%/92.7% compared to lower bounds)
+
+# RESULTS using actual walltimes
+# bw_request_sizes_20160405_5000.txt
+# Cmax lower bound non-convex: 103557, convex: 103557, actual Cmax: 130284
+# strategy strict: Cmax of schedule: 235544 (loss of ~127% compared to lower bound)
+# strategy last_bin: Cmax of schedule: 150883 (loss of ~45.7% compared to lower bounds)
+
+# bw_request_sizes_20160406_5000.txt
+# Cmax lower bound non-convex: 72011, convex: 72011, actual Cmax: 161359
+# strategy strict: Cmax of schedule: 215555 (loss of ~199% compared to lower bound)
+# strategy last_bin: Cmax of schedule: 109926 (loss of ~52.7% compared to lower bounds)
+
+# bw_request_sizes_20160406_20000.txt
+# Cmax lower bound non-convex: 173696, convex: 173696, actual Cmax: 335835
+# strategy strict: Cmax of schedule: 525719 (loss of ~203% compared to lower bounds)
+# strategy last_bin: Cmax of schedule: 485429 (loss of ~179% compared to lower bounds)
 
 # this strategy is not used as it does not make a lot of sense (cutOff is arbitrary etc)
 # and experiments show it is performing worse than last_bin strategy
