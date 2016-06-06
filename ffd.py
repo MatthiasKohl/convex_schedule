@@ -58,6 +58,7 @@ def genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gene
     nSizes = 0
     fittedSpaces = []
     lastShape = None
+    maxFreeSpaces = 0
     for ID, size in size_generator(requestSizes, possibleSizes, shape_candidates):
         isFit = False
         for shape in shape_generator(size, lastShape, possibleSizes, shape_candidates):
@@ -94,8 +95,13 @@ def genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gene
         nSizes = nSizes + 1
         if (isDebug and nSizes % (int(len(requestSizes) / 20) + 1) == 0):
             print('.', end='', flush=True)
+        numFreeSpaces = sum(1 for b in bins for s in b.freelist)
+        if (numFreeSpaces > maxFreeSpaces):
+            maxFreeSpaces = numFreeSpaces
     if (isDebug):
         print()
+    print('The maximum number of total free spaces during the whole packing was: ' +
+          str(maxFreeSpaces))
     return bins
 
 def chooseCandidateFlat(requestSize, possibleSizes, shape_candidates):
@@ -300,6 +306,13 @@ def performFFD(boundaries, requestSizes, strategy, unitTest, alpha, printDetail 
 
     return results
 
+def uniformRandomRequestsFFD(boundaries, strategy, unitTest, alpha, printDetail = False):
+    total = reduce(operator.mul, boundaries, 1)
+    random.seed()
+    requestSizes = [random.randint(1, total) for i in range(random.randint(1000, 2000))]
+    requestSizes = dict(enumerate(requestSizes))
+    return performFFD(boundaries, requestSizes, strategy, unitTest, alpha, printDetail)
+
 def randomRequestsFFD(boundaries, strategy, unitTest, alpha, printDetail = False):
     total = reduce(operator.mul, boundaries, 1)
     random.seed()
@@ -311,12 +324,13 @@ def randomRequestsFFD(boundaries, strategy, unitTest, alpha, printDetail = False
     requestSizes = dict(enumerate(requestSizes))
     return performFFD(boundaries, requestSizes, strategy, unitTest, alpha, printDetail)
 
-def traceRequestsFFD(filename, boundaries, strategy, unitTest, alpha, printDetail = False):
+def traceRequestsFFD(filename, boundaries, strategy, unitTest, alpha, columnIdx = 0, printDetail = False):
     requestSizes = {}
     with open(filename) as infile:
         i = 0
         for line in infile:
-            requestSizes[i] = int(line.split()[0])
+            requestSizes[i] = int(line.split()[columnIdx])
+            i = i + 1
     return performFFD(boundaries, requestSizes, strategy, unitTest, alpha, printDetail)
 
 def testStrategies(boundaries):
