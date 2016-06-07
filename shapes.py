@@ -105,38 +105,72 @@ def metric_distance_from_center(proj, isGrid, dimensions):
     # TODO
     return 1
 
-# what to do with projections that are bigger than half the size of a dimension ?
-# because of torus topology, we could have a non-convex shape here
+def flattened_optimal_shapes(shape, dimensions):
+    # yield the possible (optimal) flattened shapes starting from the given perfect hypercube
+    for n in range(2, len(dimensions) + 1):
+        for l in itertools.combinations(zip(enumerate(shape), dimensions.values()), n):
+            maximalSizes = sorted((x for x in l), key=lambda x: x[0][1], reverse=True)[:n-1]
+            flattenFactor = reduce(operator.mul, [d / s for (i, s), d in maximalSizes], 1)
+            maxIndices = [x[0][0] for x in maximalSizes]
+            restSize = reduce(operator.mul, [s for i, s in enumerate(shape) if not (i in maxIndices)], 1)
+            restSize = restSize / flattenFactor
+            if (restSize < 1):
+                continue
+            newShape = [x[1] for x in maximalSizes]
+            numRestSizes = len(shape) - len(maximalSizes)
+            newShape.extend(restSize ** (1.0 / (numRestSizes)) for i in range(numRestSizes))
+            yield newShape
+
+# average distance for a chain or ring of size p inside a torus of size d
+# according to Pahrami, exact formulas for average internode distance..., 2013
+def average_distance(p, d, isGrid):
+    if (isGrid or p <= d // 2):
+        return (p - 1/p) / 3
+    elif (p >= d):
+        return (p - (p % 2)/p) / 4
+    else:
+        # linearly interpolate between the two values
+        # this is not rigorous but only used for optimal AD calculations
+        # which are debatable anyway
+        v1 = (p - 1/p) / 3
+        v2 = (p - (p % 2)/p) / 4
+        coef = (d - p) / (d // 2 + d % 2)
+        return v1 * coef + v2 * (1 - coef)
+
+def metric_ad(proj, isGrid, dimensions):
+    return sum(average_distance(p, d, isGrid) for p, d in zip(proj, dimensions.values()))
+
+def opt_ad(size, isGrid, dimensions):
+    optSide = size ** (1.0/len(dimensions))
+    if isGrid:
+        return len(dimensions) * average_distance(optSide, True)
+    else:
+        shape = [optSide for x in dimensions]
+        optAD = metric_ad(shape, False, dimensions)
+        for newShape in flattened_optimal_shapes(shape, dimensions):
+            newAD = metric_ad(newShape, False, dimensions)
+            if (newAD < optAD):
+                optAD = newAD
+        return optAD
+
 def metric_diameter(proj, isGrid, dimensions):
     if isGrid:
         return sum(map(lambda x: x - 1, proj))
     else:
         return sum(min(s-1, d // 2) for s, d in zip(proj, dimensions.values()))
 
-def get_opt_diameter(shape, dimensions):
-    # check if flattening gains us diameter
-    currentDiam = metric_diameter(shape, False, dimensions)
-    for n in range(2, len(dimensions) + 1):
-        for l in itertools.combinations(zip(enumerate(shape), dimensions.values()), n):
-            maximalSizes = sorted((x for x in l), key=lambda x: x[0][1], reverse=True)[:n-1]
-            factor = reduce(operator.mul, [d / s for (i, s), d in maximalSizes], 1)
-            maxIndices = [x[0][0] for x in maximalSizes]
-            restSize = reduce(operator.mul, [s for i, s in enumerate(shape) if not (i in maxIndices)], 1)
-            restSize = restSize / factor
-            newShape = [x[1] for x in maximalSizes]
-            numRestSizes = len(shape) - len(maximalSizes)
-            newShape.extend(restSize ** (1.0 / (numRestSizes)) for i in range(numRestSizes))
-            newDiam = metric_diameter(newShape, False, dimensions)
-            if (newDiam < currentDiam):
-                return get_opt_diameter(newShape, dimensions)
-    return currentDiam
-
 def opt_diameter(size, isGrid, dimensions):
     optSide = size ** (1.0/len(dimensions))
     if isGrid:
         return len(dimensions) * (optSide - 1)
     else:
-        return get_opt_diameter([optSide for i in dimensions], dimensions)
+        shape = [optSide for x in dimensions]
+        optDiam = metric_diameter(shape, False, dimensions)
+        for newShape in flattened_optimal_shapes(shape, dimensions):
+            newDiam = metric_diameter(newShape, False, dimensions)
+            if (newDiam < optDiam):
+                optDiam = newDiam
+        return optDiam
 
 # this metric is not diameter / perfect diameter but rather shape / perfect cubic shape
 def metric_compactness(proj, isGrid, dimensions):

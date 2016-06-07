@@ -11,7 +11,7 @@ import numpy as np
 import uuid
 from functools import reduce
 from shapes import shape_candidates, char_range
-from shapes import metric_compactness, metric_diameter, opt_diameter
+from shapes import metric_compactness, metric_diameter, opt_diameter, metric_ad, opt_ad
 from packingbin import Bin
 
 def getPossibleSizes(dimensions, shape_candidates, alpha, isFull = True):
@@ -152,13 +152,13 @@ def ffGreatestMetricDeltaFirst(dimensions, requestSizes, shape_candidates, alpha
         return (s for s in sorted(sorted(requestSizes.items(),
                                          reverse=True, key=lambda x: x[1]),
                                   key=lambda r: metricsVariance(r[1], dimensions, possibleSizes,
-                                                                candidates_wor, metric_diameter),
+                                                                candidates_wor, metric_ad),
                                   reverse=True))
     def shape_gen(size, lastShape, possibleSizes, shape_candidates):
         # sort by metric (best to worst) and by size for same metric
         spaces = sorted((p for n in possibleSizes[size] for p in shape_candidates[n]),
                         key=lambda p: reduce(operator.mul, p, 1))
-        return (s for s in sorted(spaces, key=lambda p: metric_diameter(p, False, dimensions)))
+        return (s for s in sorted(spaces, key=lambda p: metric_ad(p, False, dimensions)))
 
     return genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gen,
                            shape_gen, placeBest, initialBins, unitTestBest, isDebug)
@@ -178,14 +178,14 @@ def ffdBestMetricAlways(dimensions, requestSizes, shape_candidates, alpha,
                         initialBins=[], isDebug=False):
     possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
     # always pick the best metric shapes and then pack using that
-    # if we choose diameter as metric, the best metric of r1 cannot have greater size
+    # if we choose diameter/AD as metric, the best metric of r1 cannot have greater size
     # than the best metric of r2 if r1 < r2, since there cannot be two shapes of different sizes
-    # having the best diameter for the requests
+    # having the best diameter/AD for the requests
     def size_gen(requestSizes, possibleSizes, shape_candidates):
         return (s for s in sorted(requestSizes.items(), reverse=True, key=lambda x: x[1]))
     def shape_gen(size, lastShape, possibleSizes, shape_candidates):
         return chooseBestMetricShapes(size, dimensions, possibleSizes, shape_candidates,
-                                      metric_diameter)
+                                      metric_ad)
 
     return genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gen,
                            shape_gen, placeBest, initialBins, unitTestBest, isDebug)
@@ -204,7 +204,7 @@ def ffdEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha,
                             (p for n in possibleSizes[size] for p in shape_candidates[n]))
         sortedShapes = sorted(considered, key=lambda p: reduce(operator.mul, p, 1))
         return (s for s in sorted(sortedShapes,
-                                  key=lambda p: metric_diameter(p, False, dimensions)))
+                                  key=lambda p: metric_ad(p, False, dimensions)))
 
     return genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gen,
                            shape_gen, placeBest, initialBins, unitTestBest, isDebug)
@@ -215,12 +215,12 @@ def ffEachBestMetricFirst(dimensions, requestSizes, shape_candidates, alpha,
         return (s for s in sorted(requestSizes.items(), reverse=True, key=lambda x: x[1]))
     def shape_gen(size, lastShape, possibleSizes, shape_candidates):
         # try any shape, from best metric to worst
-        # choose diameter as metric because bigger shapes should not get precedence
-        # sort by size first to give precedence to smaller shapes if diameter is the same
+        # choose diameter/AD as metric because bigger shapes should not get precedence
+        # sort by size first to give precedence to smaller shapes if diameter/AD is the same
         sortedShapes = sorted((p for n in possibleSizes[size] for p in shape_candidates[n]),
                               key=lambda p: reduce(operator.mul, p, 1))
         return (s for s in sorted(sortedShapes,
-                                  key=lambda p: metric_diameter(p, False, dimensions)))
+                                  key=lambda p: metric_ad(p, False, dimensions)))
 
     return genericFirstFit(dimensions, requestSizes, shape_candidates, alpha, size_gen,
                            shape_gen, placeBest, initialBins, unitTestBest, isDebug)
@@ -240,7 +240,7 @@ def printResults(boundaries, results):
 
     print('Total convex space in bins: ' + str(results[8]) + ', exceeding ' +
           str(results[9]) + '% total requested space')
-    print('Total average diameter: ' + str(results[10]) + ', total optimal average diameter: ' +
+    print('Total average AD: ' + str(results[10]) + ', total optimal average AD: ' +
           str(results[11]) + ' (' + str((results[10]-results[11]) * 100 / results[11]) + '% loss)')
 
 def getStats(dimensions, requestSizes, bins):
@@ -268,14 +268,14 @@ def getStats(dimensions, requestSizes, bins):
     totalSubMeshSpace = sum(convexUsedSpace(b) for b in bins)
     totalSubMeshExceedingPercentage = (totalSubMeshSpace - totalRequestSize) * 100 / totalRequestSize
 
-    averageDiameter = sum(metric_diameter(p.boundaries, False, dimensions) for b in bins
+    averageMetric = sum(metric_ad(p.boundaries, False, dimensions) for b in bins
                           for p in b.spaces) / len(requestSizes)
-    averageOptDiameter = sum(opt_diameter(r, False, dimensions)
+    averageOptMetric = sum(opt_ad(r, False, dimensions)
                              for r in requestSizes.values()) / len(requestSizes)
 
     return [totalRequestSize, nRequests, nBins, nOptBins, unusedSpace, unusedPercentage,
     totalUsedSpace, totalUsedExceedingPercentage, totalSubMeshSpace,
-    totalSubMeshExceedingPercentage, averageDiameter, averageOptDiameter]
+    totalSubMeshExceedingPercentage, averageMetric, averageOptMetric]
 
 def performFFD(boundaries, requestSizes, strategy, unitTest, alpha, printDetail = False):
     # get shape candidates
@@ -345,7 +345,7 @@ def testStrategies(boundaries):
             print('Testing strategy ' + name + ' with alpha ' + str(alpha))
             results = []
             for i in range(10):
-                results.append(randomRequestsFFD(boundaries, strategy, unitTest, alpha))
+                results.append(uniformRandomRequestsFFD(boundaries, strategy, unitTest, alpha))
             npResults = np.array(results)
             avgResults = np.mean(npResults, axis=0)
             print('Average results for strategy ' + name + ' and alpha ' + str(alpha))
@@ -374,14 +374,14 @@ if __name__ == '__main__':
 
     # JUST TESTS
     #randomRequestsFFD([24, 24, 24], ffdFlat, 0.15, True)
-    #testStrategies([24,24,24])
+    testStrategies([24,24,24])
     #randomRequestsFFD([24,24,24], ffdGreatestMetricDeltaFirst, 0.15, True)
     #printResults([24,24,24],
     #             traceRequestsFFD('request_sizes_scaled_5000.txt', [24,24,24],
     #                              ffdNonStrictEachBestMetricFirst, 0.15))
     #performFFD([24,24,24],[56,34],ffdAllBestMetricFirst,1.0, True)
 
-# RANDOM RESULTS (best for alpha 0.15 is best-metric-first (non-strict))
+# RANDOM RESULTS USING DIAMETER (best for alpha 0.15 is best-metric-first (non-strict))
 # Testing strategy flat with alpha 0.15
 # Average results for strategy flat and alpha 0.15
 # Dimensions: [24, 24, 24]
@@ -491,7 +491,120 @@ if __name__ == '__main__':
 # Total convex space in bins: 1433649.6, exceeding 10.4505492442% total requested space
 # Total average diameter: 22.7771663937, total optimal average diameter: 21.9994457254 (3.53518301314% loss)
 
-# Scaled Curie results (best for alpha 0.15 is best-metric-first)
+
+# RANDOM RESULTS USING AD (best for alpha 0.15 is best-metric-first (non-strict))
+# Testing strategy flat with alpha 0.15
+# Average results for strategy flat and alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 1289.2 requests into 115.1 bins (11.2077294686% loss)
+# Total size of requests is: 1424895.8, total bins size: 1591142.4, optimal lower bound (# bins): 103.5
+# Packing unused space (excluding last bin): 74685.2 -> 4.69057859621%
+# Total used space: 1508963.2, exceeding 5.89629787882% total requested space
+# Total convex space in bins: 1546408.8, exceeding 8.60408795714% total requested space
+# Total average AD: 11.0759204107, total optimal average AD: 9.43255164248 (17.4223140308% loss)
+
+
+# Testing strategy flat with alpha 1.0
+# Average results for strategy flat and alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 1415.4 requests into 141.0 bins (22.289679098% loss)
+# Total size of requests is: 1588266.3, total bins size: 1949184.0, optimal lower bound (# bins): 115.3
+# Packing unused space (excluding last bin): 8.7 -> 0.000552052875244%
+# Total used space: 1945043.5, exceeding 22.4854393886% total requested space
+# Total convex space in bins: 1945324.8, exceeding 22.5034650135% total requested space
+# Total average AD: 12.2151710361, total optimal average AD: 9.45023941891 (29.2577943759% loss)
+
+
+# Testing strategy best-always with alpha 0.15
+# Average results for strategy best-always and alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 1250.1 requests into 121.5 bins (21.3786213786% loss)
+# Total size of requests is: 1377671.4, total bins size: 1679616.0, optimal lower bound (# bins): 100.1
+# Packing unused space (excluding last bin): 316090.2 -> 18.9093322022%
+# Total used space: 1408097.7, exceeding 2.21000147351% total requested space
+# Total convex space in bins: 1534005.8, exceeding 11.5438258368% total requested space
+# Total average AD: 9.6802710669, total optimal average AD: 9.31518014601 (3.91931143754% loss)
+
+
+# Testing strategy best-always with alpha 1.0
+# Average results for strategy best-always and alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 1319.6 requests into 129.4 bins (21.7309501411% loss)
+# Total size of requests is: 1463272.6, total bins size: 1788825.6, optimal lower bound (# bins): 106.3
+# Packing unused space (excluding last bin): 332843.1 -> 18.6455088509%
+# Total used space: 1495775.0, exceeding 2.22431639718% total requested space
+# Total convex space in bins: 1630170.3, exceeding 11.6162234802% total requested space
+# Total average AD: 9.71346172025, total optimal average AD: 9.33345556705 (4.07144117708% loss)
+
+
+# Testing strategy greatest-metric-delta with alpha 0.15
+# Average results for strategy greatest-metric-delta and alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 1366.2 requests into 121.0 bins (9.00900900901% loss)
+# Total size of requests is: 1527230.5, total bins size: 1672704.0, optimal lower bound (# bins): 111.0
+# Packing unused space (excluding last bin): 74231.0 -> 4.56994709639%
+# Total used space: 1570508.6, exceeding 2.82364793086% total requested space
+# Total convex space in bins: 1663099.2, exceeding 9.02122232858% total requested space
+# Total average AD: 9.99065471947, total optimal average AD: 9.45929386515 (5.61734165249% loss)
+
+
+# Testing strategy greatest-metric-delta with alpha 1.0
+# Average results for strategy greatest-metric-delta and alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 1313.1 requests into 116.5 bins (10.1134215501% loss)
+# Total size of requests is: 1455998.7, total bins size: 1610496.0, optimal lower bound (# bins): 105.8
+# Packing unused space (excluding last bin): 76383.1 -> 4.84571338459%
+# Total used space: 1507940.5, exceeding 3.55577557221% total requested space
+# Total convex space in bins: 1596888.0, exceeding 9.77753193356% total requested space
+# Total average AD: 9.97259512254, total optimal average AD: 9.34211020842 (6.74884902929% loss)
+
+
+# Testing strategy best-metric-first-strict-decreasing with alpha 0.15
+# Average results for strategy best-metric-first-strict-decreasing and alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 1404.7 requests into 123.8 bins (9.07488986784% loss)
+# Total size of requests is: 1561765.6, total bins size: 1711411.2, optimal lower bound (# bins): 113.5
+# Packing unused space (excluding last bin): 63372.4 -> 3.6408273516%
+# Total used space: 1600755.4, exceeding 2.49821640535% total requested space
+# Total convex space in bins: 1701796.8, exceeding 8.97662171023% total requested space
+# Total average AD: 9.93251650955, total optimal average AD: 9.37502221152 (5.94659175677% loss)
+
+
+# Testing strategy best-metric-first-strict-decreasing with alpha 1.0
+# Average results for strategy best-metric-first-strict-decreasing and alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 1367.3 requests into 121.1 bins (8.80503144654% loss)
+# Total size of requests is: 1529848.1, total bins size: 1674086.4, optimal lower bound (# bins): 111.3
+# Packing unused space (excluding last bin): 60395.0 -> 3.60721029937%
+# Total used space: 1567304.3, exceeding 2.44983956657% total requested space
+# Total convex space in bins: 1659158.4, exceeding 8.49613678919% total requested space
+# Total average AD: 9.97656368503, total optimal average AD: 9.41187869128 (5.9997053965% loss)
+
+
+# Testing strategy best-metric-first with alpha 0.15
+# Average results for strategy best-metric-first and alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 1313.2 requests into 113.9 bins (6.84803001876% loss)
+# Total size of requests is: 1466145.3, total bins size: 1574553.6, optimal lower bound (# bins): 106.6
+# Packing unused space (excluding last bin): 18014.9 -> 1.1877597006%
+# Total used space: 1506017.1, exceeding 2.71980669917% total requested space
+# Total convex space in bins: 1573344.0, exceeding 7.41177177965% total requested space
+# Total average AD: 10.0758487713, total optimal average AD: 9.42803081752 (6.87119045699% loss)
+
+
+# Testing strategy best-metric-first with alpha 1.0
+# Average results for strategy best-metric-first and alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 1275.7 requests into 109.9 bins (6.80272108844% loss)
+# Total size of requests is: 1416000.8, total bins size: 1519257.6, optimal lower bound (# bins): 102.9
+# Packing unused space (excluding last bin): 12427.5 -> 0.81588710868%
+# Total used space: 1462686.4, exceeding 3.28598897641% total requested space
+# Total convex space in bins: 1519257.6, exceeding 7.36224635733% total requested space
+# Total average AD: 10.1242105291, total optimal average AD: 9.40232300299 (7.67775714433% loss)
+
+
+
+# SCALED Curie RESULTS USING DIAMETER (best for alpha 0.15 is best-metric-first)
 # Testing strategy flat with alpha 0.15
 # Dimensions: [24, 24, 24]
 # Packed 5000 requests into 60 bins
@@ -590,3 +703,105 @@ if __name__ == '__main__':
 # Total used space: 814854, exceeding 5.412579849782798% total requested space
 # Total convex space in bins: 843264, exceeding 9.087804360593728% total requested space
 # Total average diameter: 5.5594, total optimal average diameter: 5.179844654595089
+
+
+# SCALED Curie RESULTS USING AD (best for alpha 0.15 is best-metric-first)
+# Testing strategy flat with alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 60 bins (7.142857142857143% loss)
+# Total size of requests is: 773014, total bins size: 829440, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 0 -> 0.0%
+# Total used space: 819989, exceeding 6.076862773507337% total requested space
+# Total convex space in bins: 820224, exceeding 6.107263257845266% total requested space
+# Total average AD: 3.258063196248265, total optimal average AD: 2.197729205525152 (48.24679892579142% loss)
+
+
+# Testing strategy flat with alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 68 bins (21.428571428571427% loss)
+# Total size of requests is: 773014, total bins size: 940032, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 0 -> 0.0%
+# Total used space: 936357, exceeding 21.130665162597314% total requested space
+# Total convex space in bins: 936576, exceeding 21.158995826725% total requested space
+# Total average AD: 3.4693344276095215, total optimal average AD: 2.197729205525152 (57.85995922006765% loss)
+
+
+# Testing strategy best-always with alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 63 bins (12.5% loss)
+# Total size of requests is: 773014, total bins size: 870912, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 68048 -> 7.813418577307466%
+# Total used space: 804024, exceeding 4.011570294975253% total requested space
+# Total convex space in bins: 851328, exceeding 10.13099374655569% total requested space
+# Total average AD: 2.2721416546416253, total optimal average AD: 2.197729205525152 (3.3858788848689154% loss)
+
+
+# Testing strategy best-always with alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 63 bins (12.5% loss)
+# Total size of requests is: 773014, total bins size: 870912, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 67475 -> 7.7476254776602%
+# Total used space: 804047, exceeding 4.0145456615274755% total requested space
+# Total convex space in bins: 851328, exceeding 10.13099374655569% total requested space
+# Total average AD: 2.271057051467021, total optimal average AD: 2.197729205525152 (3.3365278014016075% loss)
+
+
+# Testing strategy greatest-metric-delta with alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 65 bins (16.071428571428573% loss)
+# Total size of requests is: 773014, total bins size: 898560, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 65241 -> 7.260616987179487%
+# Total used space: 805872, exceeding 4.250634529258202% total requested space
+# Total convex space in bins: 854208, exceeding 10.503561384399248% total requested space
+# Total average AD: 2.3082213876863915, total optimal average AD: 2.197729205525152 (5.027561261117125% loss)
+
+
+# Testing strategy greatest-metric-delta with alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 62 bins (10.714285714285714% loss)
+# Total size of requests is: 773014, total bins size: 857088, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 26988 -> 3.148801523297491%
+# Total used space: 809944, exceeding 4.777403772764788% total requested space
+# Total convex space in bins: 850752, exceeding 10.056480218986978% total requested space
+# Total average AD: 2.311360613275595, total optimal average AD: 2.197729205525152 (5.170400769338211% loss)
+
+
+# Testing strategy best-metric-first-strict-decreasing with alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 61 bins (8.928571428571429% loss)
+# Total size of requests is: 773014, total bins size: 843264, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 2624 -> 0.3111718275652702%
+# Total used space: 804997, exceeding 4.137441236510593% total requested space
+# Total convex space in bins: 843264, exceeding 9.087804360593728% total requested space
+# Total average AD: 2.370801645021626, total optimal average AD: 2.197729205525152 (7.875057539453238% loss)
+
+
+# Testing strategy best-metric-first-strict-decreasing with alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 61 bins (8.928571428571429% loss)
+# Total size of requests is: 773014, total bins size: 843264, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 2647 -> 0.31389932452944747%
+# Total used space: 805020, exceeding 4.140416603062817% total requested space
+# Total convex space in bins: 843264, exceeding 9.087804360593728% total requested space
+# Total average AD: 2.369717041847023, total optimal average AD: 2.197729205525152 (7.82570645598597% loss)
+
+
+# Testing strategy best-metric-first with alpha 0.15
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 61 bins (8.928571428571429% loss)
+# Total size of requests is: 773014, total bins size: 843264, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 0 -> 0.0%
+# Total used space: 808607, exceeding 4.604444421446442% total requested space
+# Total convex space in bins: 843264, exceeding 9.087804360593728% total requested space
+# Total average AD: 2.3497211616161073, total optimal average AD: 2.197729205525152 (6.915863688248923% loss)
+
+
+# Testing strategy best-metric-first with alpha 1.0
+# Dimensions: [24, 24, 24]
+# Packed 5000 requests into 62 bins (10.714285714285714% loss)
+# Total size of requests is: 773014, total bins size: 857088, optimal lower bound (# bins): 56
+# Packing unused space (excluding last bin): 0 -> 0.0%
+# Total used space: 812550, exceeding 5.114525739507952% total requested space
+# Total convex space in bins: 857088, exceeding 10.876129022242806% total requested space
+# Total average AD: 2.3480751130350614, total optimal average AD: 2.197729205525152 (6.840965990347485% loss)
+
