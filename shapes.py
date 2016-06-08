@@ -55,6 +55,35 @@ def shape_candidates(extProc, isGrid, dimensions):
 
     return process_candidates(outstring, dimensions)
 
+def getPossibleSizes(dimensions, shape_candidates, alpha, isFull = True):
+    # return a dict containing for every possible request size the list of request sizes
+    # to look up in shape_candidates
+    possibleSizes = {}
+    total = reduce(operator.mul, dimensions.values(), 1)
+    for n in reversed(range(1, total + 1)):
+        cutOffSize = min(int(n+n*alpha), total)
+        possibleSizes[n] = [r for r in shape_candidates if r >= n and r <= cutOffSize]
+        if (isFull and not possibleSizes[n]):
+            # make sure that we can have a shape for n by getting the minimal sized shapes
+            possibleSizes[n] = possibleSizes[n+1]
+    return possibleSizes
+
+# returns a deep copy of the given candidates dictionary without the shapes that are
+# rotations of other shapes already in the dictionary
+def candidates_without_rotations(shape_candidates):
+    candidates = copy.deepcopy(shape_candidates)
+    for n in candidates:
+        while (True):
+            hasRotations = False
+            for p1, p2 in itertools.combinations(candidates[n], 2):
+                if ({s for s in p1} == {s for s in p2}):
+                    hasRotations = True
+                    break
+            if (not hasRotations):
+                break
+            candidates[n].remove(p1)
+    return candidates
+
 def max_potential_shape(shapes_candidates, isGrid, dimensions, minSize=1, cutOffPercentage=float('inf'), metric=lambda x, y, z : 1):
     cutOffSize = int(minSize*(1+cutOffPercentage)) if not isinf(cutOffPercentage) else len(shapes_candidates)
     shapes_metric = map(lambda x: metric(x[1], isGrid, dimensions),

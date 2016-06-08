@@ -4,7 +4,7 @@
 from shapes import shape_candidates, max_potential_shape, num_potential_shapes,\
 metric_max_min, metric_average_distance, metric_distance_from_center,\
 metric_diameter, metric_compactness, metric_nodes_affected, metric_links_affected,\
-char_range
+char_range, getPossibleSizes
 
 import operator
 from collections import namedtuple
@@ -35,9 +35,9 @@ def plot_num_shapes(shape_candidates, resources, dimensions, start_time, isGrid,
     total = reduce(operator.mul, dimensions.values(), 1)
     for alpha in args[1:]:
         numShapesAlpha = []
+        possibleSizes = getPossibleSizes(dimensions, shape_candidates, alpha)
         for r in resources:
-            cutOffSize = min(int(r+r*alpha), total)
-            numShapesAlpha.append(sum(numShapes[r-1:cutOffSize-1+1]))
+            numShapesAlpha.append(sum(numShapes[n-1] for n in possibleSizes[r]))
         max_num_shapes = sorted(zip(resources, numShapesAlpha), key=lambda x: x[1])[-3:]
         print('[' + str(time.time()-start_time) + '] plotting numShapes for alpha ' + str(alpha) +
               ' -> max numShapes: ' + "||".join(map(lambda x: str(x[1]) + ' (resource: ' + str(x[0]) + ')', max_num_shapes)))
