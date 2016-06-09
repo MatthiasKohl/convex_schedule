@@ -42,11 +42,12 @@ def plot_num_shapes(shape_candidates, resources, dimensions, start_time, isGrid,
         print('[' + str(time.time()-start_time) + '] plotting numShapes for alpha ' + str(alpha) +
               ' -> max numShapes: ' + "||".join(map(lambda x: str(x[1]) + ' (resource: ' + str(x[0]) + ')', max_num_shapes)))
         plt.plot(resources, numShapesAlpha, label='#shapes for alpha=' + str(alpha))
-    plt.legend()
-    plt.xlabel('Number of resources')
-    plt.ylabel('Number of shapes')
+    plt.legend(fontsize=18)
+    plt.xlabel('Number of resources', fontsize=18, fontweight='bold')
+    plt.ylabel('Number of shapes', fontsize=18, fontweight='bold')
     top = ' grid' if isGrid else ' torus'
-    plt.title('Number of convex shapes in a ' + 'x'.join(map(str, dimensions.values())) + top +' for a given number of resources')
+    plt.title('Number of convex shapes in a ' + 'x'.join(map(str, dimensions.values())) + top +
+                ' by number of resources', fontsize=13, fontweight='bold')
     plt.show()
 
 def plot_max_metric(shape_candidates, resources, dimensions, start_time, isGrid, args):
