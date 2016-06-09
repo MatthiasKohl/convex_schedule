@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 import operator
+import copy
 from collections import namedtuple
 from functools import reduce
 from subprocess import Popen, PIPE
