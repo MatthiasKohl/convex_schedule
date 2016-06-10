@@ -12,8 +12,10 @@ import pytz
 import Jedule.schedule_common as sc
 from ffd import ffEachBestMetricFirst, getPossibleSizes
 from shapes import char_range, shape_candidates
+from packingbin import Bin
+from packingspace import ConvexSpace
 
-def testSchedule(schedule, jobs):
+def testSchedule(schedule, jobs, boundaries):
     scheduledIDs = sorted(i for i, t, s in schedule)
     if (len(scheduledIDs) > len(jobs)):
         print('Some jobs were scheduled twice: #scheduled IDs: ' + str(len(scheduledIDs)) +
@@ -23,8 +25,17 @@ def testSchedule(schedule, jobs):
         print('Some jobs were not scheduled: There were ' +
               str(len(scheduledIDs)) + ' scheduled jobs vs ' + str(len(jobs)) + ' requested')
         return False
-    # TODO add test for time overlaps (space overlaps should not happen,
-    # since bin packing is assumed to be tested)
+    # test space and time overlaps by creating a higher dimensional bin with the allocated spaces
+    cmax = max(s[1] + jobs[s[0]][1] for s in schedule)
+    binBoundaries = list(boundaries) + [cmax]
+    b = Bin(binBoundaries)
+    for jobId, startTime, space in schedule:
+        b.spaces.add(ConvexSpace(space.coordinates + [startTime],
+                                 space.boundaries + [jobs[jobId][1]], binBoundaries))
+    b.freelist = set()
+    if (not b.testPossible()):
+        print('Some jobs are overlapping in the schedule')
+        return False
     return True
 
 def powersGenerator(power, nMin, nMax):
@@ -234,18 +245,18 @@ def perform_schedule(filename, boundaries, time_series_generator, alpha):
             jobs_sched.append((size, int(walltime.total_seconds())))
             actual_sched.append((size, startime, walltime))
     sched = schedule_strict(dimensions, candidates, alpha, jobs_sched, time_series_generator)
-    if (not testSchedule(sched, jobs_sched)):
+    if (not testSchedule(sched, jobs_sched, boundaries)):
         return
     printStats(sched, jobs_sched, actual_sched, boundaries, possibleSizes)
     outFilePrefix = ''
     if (len(sys.argv) >= 3):
         outFilePrefix = sys.argv[2]
-    save_jedule_output(boundaries, sched, jobs_sched, outFilePrefix + 'strict.xml')
+    save_jedule_output(boundaries, sched, jobs_sched, outFilePrefix + 'strict.jed')
     sched_last = schedule_last_bin(dimensions, candidates, alpha, jobs_sched, time_series_generator)
-    if (not testSchedule(sched_last, jobs_sched)):
+    if (not testSchedule(sched_last, jobs_sched, boundaries)):
         return
     printStats(sched_last, jobs_sched, actual_sched, boundaries, possibleSizes)
-    save_jedule_output(boundaries, sched_last, jobs_sched, outFilePrefix + 'last_bin.xml')
+    save_jedule_output(boundaries, sched_last, jobs_sched, outFilePrefix + 'last_bin.jed')
 
 if __name__ == '__main__':
     # alpha of 0.15 gave best results with packing

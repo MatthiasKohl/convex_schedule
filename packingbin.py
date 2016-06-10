@@ -126,7 +126,7 @@ class Bin:
         # check that no space goes outside of given boundaries
         allSpaces = list(self.freelist) + list(self.spaces)
         BS = ConvexSpace([0 for x in self.boundaries], self.boundaries, self.boundaries)
-        if (not all(BS.contains(s) for s in allSpaces)):
+        if (any(not BS.contains(s) for s in allSpaces)):
             print('Space ' + str([s for s in allSpaces if not BS.contains(s)][0]) +
                   ' is out of bounds')
             return False

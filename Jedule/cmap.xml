@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<cmap name="default">
+    <conf name="min_font_size_label" value="14" />
+    <conf name="font_size_label" value="18" />
+    <conf name="font_size_axes" value="18" />
+
+    <task id="computation">
+        <color type="fg" rgb="FFFFFF" />
+        <color type="bg" rgb="0000FF" />
+    </task>
+
+    <task id="transfer">
+        <color type="fg" rgb="FFFFFF" />
+        <color type="bg" rgb="0000FF" />
+    </task>
+
+    <composite>
+        <task id="computation" />
+        <task id="transfer" />
+        <color type="fg" rgb="FFFFFF" />
+        <color type="bg" rgb="ff6200" />
+    </composite>
+
+</cmap>
