@@ -44,6 +44,13 @@ def powersGenerator(power, nMin, nMax):
     return (int(power ** x) for x in range(start, end + 1))
 def powers2(nMin, nMax):
     return powersGenerator(2, nMin, nMax)
+def inversePowers2(nMin, nMax):
+    x = nMax + 1
+    l = []
+    while (x >= nMin):
+        l.append(x)
+        x = x // 2
+    return reversed(l)
 
 # for this series, need to pay attention since the span between
 # nMin and nMax must be at least M
@@ -260,7 +267,7 @@ def perform_schedule(filename, boundaries, time_series_generator, alpha):
 
 if __name__ == '__main__':
     # alpha of 0.15 gave best results with packing
-    perform_schedule(sys.argv[1], [24,24,24], powers2, 0.15)
+    perform_schedule(sys.argv[1], [24,24,24], inversePowers2, 0.15)
 
 # RESULTS using requested walltimes
 # bw_request_sizes_20160405_5000.txt
@@ -278,7 +285,7 @@ if __name__ == '__main__':
 # strategy strict: Cmax of schedule: 1000050 (loss of ~158%/152% compared to lower bounds)
 # strategy last_bin: Cmax of schedule: 764580 (loss of ~97.4%/92.7% compared to lower bounds)
 
-# RESULTS using actual walltimes
+# RESULTS using processing times (wall-time = run-time)
 # bw_request_sizes_20160405_5000.txt
 # Cmax lower bound non-convex: 103557, convex: 103557, actual Cmax: 130284
 # strategy strict: Cmax of schedule: 235544 (loss of ~127% compared to lower bound)
@@ -293,6 +300,22 @@ if __name__ == '__main__':
 # Cmax lower bound non-convex: 173696, convex: 173696, actual Cmax: 335835
 # strategy strict: Cmax of schedule: 525719 (loss of ~203% compared to lower bounds)
 # strategy last_bin: Cmax of schedule: 485429 (loss of ~179% compared to lower bounds)
+
+# RESULTS using processing times (wall-time = run-time) with inversed powers of 2
+# bw_request_sizes_20160405_5000.txt
+# Cmax lower bound non-convex: 103557, convex: 103557, actual Cmax: 130284
+# strategy strict: Cmax of schedule: 207036 (loss of ~100% compared to lower bound)
+# strategy last_bin: Cmax of schedule: 127547 (loss of ~23.2% compared to lower bounds)
+
+# bw_request_sizes_20160406_5000.txt
+# Cmax lower bound non-convex: 72011, convex: 72011, actual Cmax: 161359
+# strategy strict: Cmax of schedule: 157863 (loss of ~119% compared to lower bounds)
+# strategy last_bin: Cmax of schedule: 134803 (loss of ~87.2% compared to lower bounds)
+
+# bw_request_sizes_20160406_20000.txt
+# Cmax lower bound non-convex: 173696, convex: 173696, actual Cmax: 335835
+# strategy strict: Cmax of schedule: 460801 (loss of ~165% compared to lower bounds)
+# strategy last_bin: Cmax of schedule: 415969 (loss of ~139% compared to lower bounds)
 
 # this strategy is not used as it does not make a lot of sense (cutOff is arbitrary etc)
 # and experiments show it is performing worse than last_bin strategy
