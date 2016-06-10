@@ -9,6 +9,7 @@ import copy
 from functools import reduce
 import operator
 import pytz
+import Jedule.schedule_common as sc
 from ffd import ffEachBestMetricFirst, getPossibleSizes
 from shapes import char_range, shape_candidates
 
@@ -82,6 +83,7 @@ def schedule_strict(dimensions, candidates, alpha, jobs, time_series_generator):
             continue
 
         bins = pack(jobs, requestSizes, [], dimensions, candidates, alpha)
+        print('#bins: ' + str(len(bins)) + ', slice: ' + str(lastTimeSlice))
         for b in sorted(bins, key=lambda b: max_bin_time(b, jobs)):
             schedule.extend((b.spaceIDs[s], currentTime, s) for s in b.spaces)
             currentTime = currentTime + max_bin_time(b, jobs)
@@ -90,6 +92,7 @@ def schedule_strict(dimensions, candidates, alpha, jobs, time_series_generator):
 
 # same as above but allow to pack the last bin of a packing in the next packing,
 # while keeping it in the same shelf in terms of time series, if this reduces the Cmax
+# TODO this strategy might still be worse than strict in some cases (to be confirmed)
 def schedule_last_bin(dimensions, candidates, alpha, jobs, time_series_generator):
     maxTime = max((j[1] for j in jobs), default=0)
     minTime = min((j[1] for j in jobs), default=1)
@@ -123,6 +126,7 @@ def schedule_last_bin(dimensions, candidates, alpha, jobs, time_series_generator
                 t, b = totalBinsTime.pop()
                 totalBinsTime.append((t, newBins[0]))
 
+        print('#bins: ' + str(len(binsRef) - skipBins) + ', slice: ' + str(lastTimeSlice))
         # possibly skip the initial bins at the start since we already added them in the last packing
         totalBinsTime.extend((timeSlice, b) for b in binsRef[skipBins:])
         # the new initial bin is the last one from this packing
@@ -175,6 +179,45 @@ def printStats(schedule, jobs, actual_sched, boundaries, possibleSizes):
           str((cmax - cmax_lb_convex) * 100 / cmax_lb_convex) +
           '% compared to convex lower bound), actual Cmax: ' + str(actual_cmax))
 
+def get_resource_ids(space, boundaries):
+    # coordinates here can go outside of boundaries of the torus. only when the ID is computed,
+    # they are adjusted to torus boundaries
+    def get_id(coordinates):
+        return sum((c % boundaries[i]) *
+                   reduce(operator.mul, boundaries[(i+1):], 1) for i, c in enumerate(coordinates))
+
+    def incr_coords(coordinates, space):
+        # increment coordinates except for last dimension
+        if (len(coordinates) <= 1):
+            return coordinates
+        for d in reversed(range(len(coordinates) - 1)):
+            coordinates[d] = coordinates[d] + 1
+            if (coordinates[d] < space.coordinates[d] + space.boundaries[d]):
+                return coordinates
+            coordinates[d] = space.coordinates[d]
+        return coordinates
+
+    # make slices of coordinates aligned with last dimension
+    lastBoundary = space.boundaries[-1]
+    resources = [(get_id(space.coordinates), lastBoundary)]
+    coords = incr_coords(list(space.coordinates), space)
+    while (coords != space.coordinates):
+        resources.append((get_id(coords), lastBoundary))
+        coords = incr_coords(coords, space)
+    return resources
+
+def save_jedule_output(boundaries, allocations, jobs, filename):
+    total = reduce(operator.mul, boundaries, 1)
+    ms = sc.MoldSchedule(total)
+    for jobId, startTime, space in allocations:
+        task = sc.TaskRect(jobId, 'transfer') # nodes are of transfer type
+        task.set_times(startTime, startTime + jobs[jobId][1])
+        task.set_procs(get_resource_ids(space, boundaries))
+        ms.add_task_rect(task)
+    output = ms.get_jedule_output()
+    with open(filename, 'w') as outFile:
+        output.dump(outFile)
+
 def perform_schedule(filename, boundaries, time_series_generator, alpha):
     # get shape candidates
     dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
@@ -194,10 +237,15 @@ def perform_schedule(filename, boundaries, time_series_generator, alpha):
     if (not testSchedule(sched, jobs_sched)):
         return
     printStats(sched, jobs_sched, actual_sched, boundaries, possibleSizes)
+    outFilePrefix = ''
+    if (len(sys.argv) >= 3):
+        outFilePrefix = sys.argv[2]
+    save_jedule_output(boundaries, sched, jobs_sched, outFilePrefix + 'strict.xml')
     sched_last = schedule_last_bin(dimensions, candidates, alpha, jobs_sched, time_series_generator)
     if (not testSchedule(sched_last, jobs_sched)):
         return
     printStats(sched_last, jobs_sched, actual_sched, boundaries, possibleSizes)
+    save_jedule_output(boundaries, sched_last, jobs_sched, outFilePrefix + 'last_bin.xml')
 
 if __name__ == '__main__':
     # alpha of 0.15 gave best results with packing
