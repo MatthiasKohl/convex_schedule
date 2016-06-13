@@ -14,6 +14,7 @@ from ffd import ffEachBestMetricFirst, getPossibleSizes
 from shapes import char_range, shape_candidates
 from packingbin import Bin
 from packingspace import ConvexSpace
+import plot_cuboids
 
 def testSchedule(schedule, jobs, boundaries):
     scheduledIDs = sorted(i for i, t, s in schedule)
@@ -103,6 +104,7 @@ def schedule_strict(dimensions, candidates, alpha, jobs, time_series_generator):
         bins = pack(jobs, requestSizes, [], dimensions, candidates, alpha)
         print('#bins: ' + str(len(bins)) + ', slice: ' + str(lastTimeSlice))
         for b in sorted(bins, key=lambda b: max_bin_time(b, jobs)):
+            plot_cuboids.plot_bin(b)
             schedule.extend((b.spaceIDs[s], currentTime, s) for s in b.spaces)
             currentTime = currentTime + max_bin_time(b, jobs)
 
@@ -255,15 +257,15 @@ def perform_schedule(filename, boundaries, time_series_generator, alpha):
     if (not testSchedule(sched, jobs_sched, boundaries)):
         return
     printStats(sched, jobs_sched, actual_sched, boundaries, possibleSizes)
-    outFilePrefix = ''
-    if (len(sys.argv) >= 3):
-        outFilePrefix = sys.argv[2]
-    save_jedule_output(boundaries, sched, jobs_sched, outFilePrefix + 'strict.jed')
-    sched_last = schedule_last_bin(dimensions, candidates, alpha, jobs_sched, time_series_generator)
-    if (not testSchedule(sched_last, jobs_sched, boundaries)):
-        return
-    printStats(sched_last, jobs_sched, actual_sched, boundaries, possibleSizes)
-    save_jedule_output(boundaries, sched_last, jobs_sched, outFilePrefix + 'last_bin.jed')
+    # outFilePrefix = ''
+    # if (len(sys.argv) >= 3):
+    #     outFilePrefix = sys.argv[2]
+    # save_jedule_output(boundaries, sched, jobs_sched, outFilePrefix + 'strict.jed')
+    # sched_last = schedule_last_bin(dimensions, candidates, alpha, jobs_sched, time_series_generator)
+    # if (not testSchedule(sched_last, jobs_sched, boundaries)):
+    #     return
+    # printStats(sched_last, jobs_sched, actual_sched, boundaries, possibleSizes)
+    # save_jedule_output(boundaries, sched_last, jobs_sched, outFilePrefix + 'last_bin.jed')
 
 if __name__ == '__main__':
     # alpha of 0.15 gave best results with packing

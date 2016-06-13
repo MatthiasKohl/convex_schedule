@@ -27,6 +27,9 @@ def plot_cube_3d(fig, space, c='b'):
     ax.set_xlim(0, space.coordBoundaries[0])
     ax.set_ylim(0, space.coordBoundaries[1])
     ax.set_zlim(0, space.coordBoundaries[2])
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
 
 def plot_space_3d(fig, space, c='b'):
     def cut_spaces(spaces, d):
@@ -45,25 +48,32 @@ def plot_space_3d(fig, space, c='b'):
     for s in cut_spaces([space], len(space.coordBoundaries) - 1):
         plot_cube_3d(fig, s, c)
 
-def plot_bin(fig, bin):
+def plot_bin(bin, fig=None):
+    isFullPlot = fig == None
+    if (isFullPlot):
+        fig = plt.figure()
     random.seed()
     for s in bin.spaces:
         # random RGB
         plot_space_3d(fig, s, (random.random(), random.random(), random.random()))
+    if (isFullPlot):
+        plt.show()
 
-boundaries = [24,24,24]
-# get shape candidates
-dimensions = {c: boundaries[i] for i, c in enumerate(shapes.char_range('x', len(boundaries)))}
-candidates = shapes.shape_candidates("./primes", False, dimensions)
-total = 24*24*24
+def plot_sample_packing():
+    boundaries = [24,24,24]
+    # get shape candidates
+    dimensions = {c: boundaries[i] for i, c in enumerate(shapes.char_range('x', len(boundaries)))}
+    candidates = shapes.shape_candidates("./primes", False, dimensions)
+    total = 24*24*24
 
-random.seed()
-requestSizes = [int(x * (total-1) / 8) + 1 for x in
-np.random.normal(0.5, 0.5, random.randint(100, 200)) if x >= 0 and x <= 8]
-requestSizes = dict(enumerate(requestSizes))
-bins = ffd.ffEachBestMetricFirst(dimensions, requestSizes, candidates, 0.15)
+    random.seed()
+    requestSizes = [int(x * (total-1) / 8) + 1 for x in
+    np.random.normal(0.5, 0.5, random.randint(100, 200)) if x >= 0 and x <= 8]
+    requestSizes = dict(enumerate(requestSizes))
+    bins = ffd.ffEachBestMetricFirst(dimensions, requestSizes, candidates, 0.15)
 
-for b in bins:
-    fig = plt.figure()
-    plot_bin(fig, b)
-    plt.show()
+    for b in bins:
+        plot_bin(b)
+
+if __name__ == '__main__':
+    plot_sample_packing()
