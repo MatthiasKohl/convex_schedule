@@ -11,7 +11,7 @@ import operator
 import pytz
 import Jedule.schedule_common as sc
 from ffd import ffEachBestMetricFirst, getPossibleSizes
-from shapes import char_range, shape_candidates
+from shapes import char_range, shape_candidates, metric_ad, opt_ad
 from packingbin import Bin
 from packingspace import ConvexSpace
 import plot_cuboids
@@ -104,7 +104,7 @@ def schedule_strict(dimensions, candidates, alpha, jobs, time_series_generator):
         bins = pack(jobs, requestSizes, [], dimensions, candidates, alpha)
         print('#bins: ' + str(len(bins)) + ', slice: ' + str(lastTimeSlice))
         for b in sorted(bins, key=lambda b: max_bin_time(b, jobs)):
-            plot_cuboids.plot_bin(b)
+            # plot_cuboids.plot_bin(b)
             schedule.extend((b.spaceIDs[s], currentTime, s) for s in b.spaces)
             currentTime = currentTime + max_bin_time(b, jobs)
 
@@ -191,13 +191,25 @@ def printStats(schedule, jobs, actual_sched, boundaries, possibleSizes):
     cmax_lb_non_convex = max(max_job_time, jobs_work / reduce(operator.mul, boundaries, 1))
     jobs_convex_work = sum(min(possibleSizes[j[0]]) * j[1] for j in jobs)
     cmax_lb_convex = max(max_job_time, jobs_convex_work / reduce(operator.mul, boundaries, 1))
+
+    max_overalloc = max((reduce(operator.mul, s.boundaries, 1) - jobs[i][0]) * 100 / jobs[i][0]
+                        for i, t, s in schedule)
+    avg_overalloc = sum((reduce(operator.mul, s.boundaries, 1) - jobs[i][0]) * 100 / jobs[i][0]
+                        for i, t, s in schedule) / len(jobs)
+
+    dimensions = {c: boundaries[i] for i, c in enumerate(char_range('x', len(boundaries)))}
+    avg_metric = sum(metric_ad(s.boundaries, False, dimensions) for i, t, s in schedule) / len(jobs)
+    avg_opt_metric = sum(opt_ad(j[0], False, dimensions) for j in jobs) / len(jobs)
+
     print('Cmax lower bound (non-convex): ' + str(cmax_lb_non_convex) +
           ', Cmax lower bound (convex): ' + str(cmax_lb_convex) +
           ', Cmax of schedule: ' + str(cmax) +
           ' (loss of ' + str((cmax - cmax_lb_non_convex) * 100 / cmax_lb_non_convex) +
           '% compared to non-convex lower bound, ' +
           str((cmax - cmax_lb_convex) * 100 / cmax_lb_convex) +
-          '% compared to convex lower bound), actual Cmax: ' + str(actual_cmax))
+          '% compared to convex lower bound), actual Cmax: ' + str(actual_cmax) +
+          ', max overalloc: ' + str(max_overalloc) + '% / average overalloc: ' + str(avg_overalloc) +
+          ', average metric: ' + str(avg_metric) + ', average optimal metric: ' + str(avg_opt_metric))
 
 def get_resource_ids(space, boundaries):
     # coordinates here can go outside of boundaries of the torus. only when the ID is computed,
@@ -306,17 +318,23 @@ if __name__ == '__main__':
 # RESULTS using processing times (wall-time = run-time) with inversed powers of 2
 # bw_request_sizes_20160405_5000.txt
 # Cmax lower bound non-convex: 103557, convex: 103557, actual Cmax: 130284
-# strategy strict: Cmax of schedule: 207036 (loss of ~100% compared to lower bound)
+# strategy strict: Cmax of schedule: 207036 (loss of ~100% compared to lower bound),
+# max overalloc: 14.3% / avg overalloc: 0.77%, avg metric: 0.79, avg opt metric: 0.74,
+# avg job size: 14.88, median job size: 1
 # strategy last_bin: Cmax of schedule: 127547 (loss of ~23.2% compared to lower bounds)
 
 # bw_request_sizes_20160406_5000.txt
 # Cmax lower bound non-convex: 72011, convex: 72011, actual Cmax: 161359
-# strategy strict: Cmax of schedule: 157863 (loss of ~119% compared to lower bounds)
+# strategy strict: Cmax of schedule: 157863 (loss of ~119% compared to lower bounds),
+# max overalloc: 67.6% / avg overalloc: 1.39%, avg metric: 1.26, avg opt metric: 1.19,
+# avg job size: 58.96, median job size: 1
 # strategy last_bin: Cmax of schedule: 134803 (loss of ~87.2% compared to lower bounds)
 
 # bw_request_sizes_20160406_20000.txt
 # Cmax lower bound non-convex: 173696, convex: 173696, actual Cmax: 335835
-# strategy strict: Cmax of schedule: 460801 (loss of ~165% compared to lower bounds)
+# strategy strict: Cmax of schedule: 460801 (loss of ~165% compared to lower bounds),
+# max overalloc: 14.3% / avg overalloc: 0.77%, avg metric: 0.79, avg opt metric: 0.74,
+# avg job size: 19.25, median job size: 1
 # strategy last_bin: Cmax of schedule: 415969 (loss of ~139% compared to lower bounds)
 
 # this strategy is not used as it does not make a lot of sense (cutOff is arbitrary etc)
