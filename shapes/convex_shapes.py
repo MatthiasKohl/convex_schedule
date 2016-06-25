@@ -39,25 +39,36 @@ def shape_candidates(is_grid, dimensions):
                 + TMP_SEP + 'x'.join(map(str, dimensions.values())) + TMP_EXT)
     try:
         tmp_file = open(tmp_name, 'r')
-    except:
-        args = [GEN_PROC, '1' if is_grid else '0']
-        args.extend(map(str, dimensions.values()))
-        proc = Popen(args, stdout=PIPE)
-        out, err = proc.communicate()
-        exitcode = proc.returncode
-
-        if (exitcode != 0):
-            print('ERROR in external program ' + GEN_PROC + ' -> exit code: ' + str(exitcode))
-            return result
-
-        out_string = out.decode('ascii')
-        with open(tmp_name, 'w') as tmp_file:
-            tmp_file.write(out_string)
-
-        return process_candidates(out_string, dimensions)
+    except IOError:
+        pass
     else:
         with tmp_file:
             return process_candidates(tmp_file.read(), dimensions)
+
+    args = [GEN_PROC, '1' if is_grid else '0']
+    args.extend(map(str, dimensions.values()))
+    try:
+        proc = Popen(args, stdout=PIPE)
+    except IOError:
+        make_proc = Popen('make', cwd=ABS_DIR)
+        out, err = make_proc.communicate()
+        if (make_proc.returncode != 0):
+            print('Cannot make external program to generate shapes. Make exited with: ' + str(exitcode))
+            return {}
+        proc = Popen(args, stdout=PIPE)
+
+    out, err = proc.communicate()
+    exitcode = proc.returncode
+
+    if (exitcode != 0):
+        print('ERROR in external program ' + GEN_PROC + ' -> exit code: ' + str(exitcode))
+        return {}
+
+    out_string = out.decode('ascii')
+    with open(tmp_name, 'w') as tmp_file:
+        tmp_file.write(out_string)
+
+    return process_candidates(out_string, dimensions)
 
 
 def get_possible_sizes(dimensions, shape_candidates, alpha, is_full = True):
