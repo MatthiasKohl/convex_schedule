@@ -1,0 +1,13 @@
+# Ignore object files, gen_shapes executable
+*.o
+gen_shapes
+
+# Python
+*.pyc
+
+# exclude plots, tmp files, jedule files, jar (jedule)
+*.png
+*.tmp
+*.jed
+!jinja.jed
+*.jar
