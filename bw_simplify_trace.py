@@ -12,7 +12,7 @@
 # The date after which jobs are considered is hard-coded as of now at 2016-04-06
 
 
-from trace_bluewaters.scripts.analysis.logs.torque import Event, parse_logline
+from torque import Event, parse_logline
 import sys
 import datetime
 import pytz
