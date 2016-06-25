@@ -1,6 +1,16 @@
 #! /usr/bin/python3
 # -*- encoding: utf-8 -*-
 
+# simple script to simplify the Curie trace
+# the considered jobs must have a submit time greater than 35000000, since before, the machine
+# is not utilized enough
+# the output is a space separated table with requested size and requested time for each job
+# Arguments for the script are as follows:
+# 1 - size that request sizes should be scaled to or clamped at
+# 2 - 0 if request sizes should be clamped, else they will be scaled
+# 3 - number of jobs to output
+
+
 import sys
 
 if (len(sys.argv) < 5):
@@ -10,9 +20,9 @@ if (len(sys.argv) < 5):
 
 filename = sys.argv[1]
 try:
-    nTotalSize = int(sys.argv[2])
-    isClamp = True if int(sys.argv[3]) == 0 else False
-    nOutput = int(sys.argv[4])
+    total_size = int(sys.argv[2])
+    is_clamp = True if int(sys.argv[3]) == 0 else False
+    num_jobs = int(sys.argv[4])
 except:
     print('Provided arguments are invalid or cannot open given file <' + filename + '>')
     sys.exit(2)
@@ -40,30 +50,30 @@ except:
 # 17. Preceding Job Number
 # 18. Think Time from Preceding Job
 
-# for the CEA trace, this is the max possible size and min submit time
-maxRequestSize, minSubmitTime = 80000, 35000000
+# for the CEA curie trace, this is the max possible size and min submit time
+max_request_size, min_submit_time = 80000, 35000000
 # write to output file
-outFileName = 'request_sizes_' + ('clamped_' if isClamp else 'scaled_') + str(nOutput) + '.txt'
-print('Writing to ' + outFileName)
+out_filename = 'request_sizes_' + ('clamped_' if is_clamp else 'scaled_') + str(num_jobs) + '.txt'
+print('Writing to ' + out_filename)
 
 with open(filename) as infile:
-    with open(outFileName, 'w') as outFile:
-        sumOut = 0
+    with open(out_filename, 'w') as outfile:
+        out_sum = 0
         for line in infile:
             if (line.startswith(';')):
                 continue
             fields = line.split()
-            submitTime = int(fields[1])
+            submit_time = int(fields[1])
             # only consider jobs after startup
-            if (submitTime < minSubmitTime):
+            if (submit_time < min_submit_time):
                continue
-            requestSize = int(fields[7])
-            if (isClamp and requestSize > nTotalSize):
+            request_size = int(fields[7])
+            if (is_clamp and request_size > total_size):
                 continue
-            elif (not isClamp):
-                requestSize = min(int((requestSize / maxRequestSize) * nTotalSize) + 1, nTotalSize)
-            requestTime = int(fields[8])
-            outFile.write(str(requestSize) + ' ' + str(requestTime) + '\n')
-            sumOut = sumOut + 1
-            if (sumOut >= nOutput):
+            elif (not is_clamp):
+                request_size = min(int((request_size / max_request_size) * total_size) + 1, total_size)
+            request_time = int(fields[8])
+            outfile.write(str(request_size) + ' ' + str(request_time) + '\n')
+            out_sum = out_sum + 1
+            if (out_sum >= num_jobs):
                 break

@@ -1,23 +1,24 @@
 import json
 import numpy as np
-from shapes import process_candidates, metric_compactness, metric_diameter, metric_max_min
+from convex_shapes import (process_candidates, metric_compactness, metric_diameter,
+                           metric_max_min)
 from operator import mul
 from functools import reduce
 
-with open('blue_waters_shapes.json') as json_file:
+with open('bw_shapes.json') as json_file:
     data=json.load(json_file)
 
-csvString = ''
+csv_string = ''
 for c in data['classes']:
     for shape in c['shapes']:
-        factorStrings = shape.split('x')
-        line = str(reduce(mul, map(int, factorStrings))) + ',' + ','.join(factorStrings) + '\n'
-        csvString += line
+        factor_strings = shape.split('x')
+        line = str(reduce(mul, map(int, factor_strings))) + ',' + ','.join(factor_strings) + '\n'
+        csv_string += line
 
 dimensions = {'x': 24, 'y': 24, 'z': 24}
-shapes = process_candidates(csvString, dimensions)
+shapes = process_candidates(csv_string, dimensions)
 
-#print(csvString)
+#print(csv_string)
 #print(shapes)
 
 print('Number of shapes: ' + str(sum(1 for n, projs in shapes.items() for p in projs)))

@@ -1,6 +1,17 @@
 #! /usr/bin/python3
 # -*- encoding: utf-8 -*-
 
+# simple script to generate a simplified log of the traces from Blue Waters
+# the log is a space-separated table. Columns are in order (for each job):
+# start-time, end-time, requested size, requested wall-time, processing time
+# Arguments to provide to the script are:
+# 1 - trace filename to read
+# 2 - filename to output simplified jobs
+# 3 - number of jobs to output
+# 4 - optional - minimal size of jobs to output
+# The date after which jobs are considered is hard-coded as of now at 2016-04-06
+
+
 from trace_bluewaters.scripts.analysis.logs.torque import Event, parse_logline
 import sys
 import datetime
